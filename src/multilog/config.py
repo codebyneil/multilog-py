@@ -15,7 +15,7 @@ class Config(BaseModel):
     """Configuration for multilog-py."""
 
     betterstack_token: str | None = None
-    betterstack_ingest_url: str = "https://s1598061.eu-nbg-2.betterstackdata.com"
+    betterstack_ingest_url: str | None = None
     log_level: LogLevel = LogLevel.DEBUG
     default_context: dict[str, Any] = Field(default_factory=dict)
 
@@ -26,17 +26,14 @@ class Config(BaseModel):
 
         Environment variables:
             BETTERSTACK_TOKEN: Authentication token
-            BETTERSTACK_INGEST_URL: Ingest URL (optional, has default)
+            BETTERSTACK_INGEST_URL: Ingest URL
 
         Returns:
             Config instance populated from environment variables
         """
         return cls(
             betterstack_token=os.getenv("BETTERSTACK_TOKEN"),
-            betterstack_ingest_url=os.getenv(
-                "BETTERSTACK_INGEST_URL",
-                "https://s1598061.eu-nbg-2.betterstackdata.com",
-            ),
+            betterstack_ingest_url=os.getenv("BETTERSTACK_INGEST_URL"),
         )
 
     def create_logger(self) -> Logger:
@@ -47,11 +44,16 @@ class Config(BaseModel):
             Configured Logger instance
         """
         from multilog.handlers.betterstack import BetterstackHandler
+        from multilog.handlers.console import ConsoleHandler
         from multilog.logger import Logger
 
         handlers = []
 
-        if self.betterstack_token:
+        # Always include console handler
+        handlers.append(ConsoleHandler())
+
+        # Add Betterstack if both token and ingest URL are configured
+        if self.betterstack_token and self.betterstack_ingest_url:
             handlers.append(BetterstackHandler.from_config(self))
 
         return Logger(handlers=handlers, default_context=self.default_context)

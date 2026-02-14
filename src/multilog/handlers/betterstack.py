@@ -1,5 +1,6 @@
 """Betterstack handler for multilog-py."""
 
+import os
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -16,8 +17,8 @@ class BetterstackHandler(BaseHandler):
 
     def __init__(
         self,
-        token: str,
-        ingest_url: str,
+        token: str | None = None,
+        ingest_url: str | None = None,
         level: LogLevel = LogLevel.DEBUG,
         timeout: float = 10.0,
     ):
@@ -25,14 +26,25 @@ class BetterstackHandler(BaseHandler):
         Initialize Betterstack handler.
 
         Args:
-            token: Betterstack authentication token
-            ingest_url: Betterstack ingest URL
+            token: Betterstack authentication token (reads from BETTERSTACK_TOKEN env var if not provided)
+            ingest_url: Betterstack ingest URL (reads from BETTERSTACK_INGEST_URL env var if not provided)
             level: Minimum log level to emit
             timeout: HTTP request timeout in seconds
+
+        Raises:
+            ValueError: If token or ingest_url is not provided and not found in environment variables
         """
         super().__init__(level)
-        self.token = token
-        self.ingest_url = ingest_url
+
+        # Read from environment if not provided
+        self.token = token or os.getenv("BETTERSTACK_TOKEN")
+        self.ingest_url = ingest_url or os.getenv("BETTERSTACK_INGEST_URL")
+
+        if not self.token:
+            raise ValueError("betterstack_token is required (provide as argument or set BETTERSTACK_TOKEN env var)")
+        if not self.ingest_url:
+            raise ValueError("betterstack_ingest_url is required (provide as argument or set BETTERSTACK_INGEST_URL env var)")
+
         self.timeout = timeout
         self._client: httpx.Client | None = None
 
@@ -46,9 +58,14 @@ class BetterstackHandler(BaseHandler):
 
         Returns:
             BetterstackHandler instance
+
+        Raises:
+            ValueError: If token or ingest_url is missing
         """
         if not config.betterstack_token:
             raise ValueError("betterstack_token is required")
+        if not config.betterstack_ingest_url:
+            raise ValueError("betterstack_ingest_url is required")
 
         return cls(
             token=config.betterstack_token,

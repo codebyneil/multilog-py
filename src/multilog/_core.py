@@ -33,10 +33,12 @@ class _LoggerCore:
         config = Config.from_env()
         handlers: list[BaseHandler] = []
 
-        if config.betterstack_token:
+        # Always include console handler
+        handlers.append(ConsoleHandler())
+
+        # Add Betterstack if both token and ingest URL are configured
+        if config.betterstack_token and config.betterstack_ingest_url:
             handlers.append(BetterstackHandler.from_config(config))
-        else:
-            handlers.append(ConsoleHandler())
 
         return handlers
 
