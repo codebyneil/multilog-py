@@ -43,12 +43,4 @@ class BaseSink(ABC):
         Returns:
             True if the log should be emitted, False otherwise
         """
-        level_priority = {
-            "trace": 0,
-            "debug": 1,
-            "info": 2,
-            "warn": 3,
-            "error": 4,
-            "fatal": 5,
-        }
-        return level_priority[log_level.value] >= level_priority[self.level.value]
+        return log_level >= self.level
