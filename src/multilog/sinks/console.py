@@ -1,15 +1,15 @@
-"""Console handler for multilog-py."""
+"""Console sink for multilog-py."""
 
 import json
 import sys
 from typing import Any
 
-from multilog.handlers.base import BaseHandler
 from multilog.levels import LogLevel
+from multilog.sinks.base import BaseSink
 
 
-class ConsoleHandler(BaseHandler):
-    """Handler for logging to console (stdout/stderr)."""
+class ConsoleSink(BaseSink):
+    """Sink for logging to console (stdout/stderr)."""
 
     # ANSI color codes
     COLORS = {
@@ -24,7 +24,7 @@ class ConsoleHandler(BaseHandler):
 
     def __init__(self, level: LogLevel = LogLevel.DEBUG, use_color: bool = True):
         """
-        Initialize console handler.
+        Initialize console sink.
 
         Args:
             level: Minimum log level to emit

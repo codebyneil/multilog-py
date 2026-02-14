@@ -1,7 +1,7 @@
 """Simple example demonstrating multilog-py usage."""
 
 import asyncio
-from multilog import AsyncLogger, LogLevel, ConsoleHandler, BetterstackHandler
+from multilog import AsyncLogger, LogLevel, ConsoleSink, BetterstackSink
 
 
 async def example_basic_usage():
@@ -9,16 +9,16 @@ async def example_basic_usage():
     # Option 1: Auto-detect from environment (uses BETTERSTACK_TOKEN if set)
     logger = AsyncLogger()
 
-    # Option 2: Explicit console handler for testing
-    # logger = AsyncLogger(handlers=[ConsoleHandler()])
+    # Option 2: Explicit console sink for testing
+    # logger = AsyncLogger(sinks=[ConsoleSink()])
 
-    # Option 3: Multiple handlers (Betterstack + Console)
-    # logger = AsyncLogger(handlers=[
-    #     BetterstackHandler(
+    # Option 3: Multiple sinks (Betterstack + Console)
+    # logger = AsyncLogger(sinks=[
+    #     BetterstackSink(
     #         token="your-token",
     #         ingest_url="https://s1598061.eu-nbg-2.betterstackdata.com"
     #     ),
-    #     ConsoleHandler()
+    #     ConsoleSink()
     # ])
 
     # Log messages with different levels
@@ -32,7 +32,7 @@ async def example_basic_usage():
 
 async def example_endpoint_logging():
     """Example of logging HTTP endpoint invocations."""
-    logger = AsyncLogger(handlers=[ConsoleHandler()])
+    logger = AsyncLogger(sinks=[ConsoleSink()])
 
     # Log an API endpoint call with full request details
     await logger.log_endpoint(
@@ -50,7 +50,7 @@ async def example_endpoint_logging():
 
 async def example_exception_logging():
     """Example of logging exceptions with full stacktraces."""
-    logger = AsyncLogger(handlers=[ConsoleHandler()])
+    logger = AsyncLogger(sinks=[ConsoleSink()])
 
     try:
         # Simulate an error
@@ -70,7 +70,7 @@ async def example_with_default_context():
     """Example using default context for all logs."""
     # Set context that will be included in ALL logs from this logger
     logger = AsyncLogger(
-        handlers=[ConsoleHandler()],
+        sinks=[ConsoleSink()],
         default_context={
             "service": "payment-api",
             "environment": "production",
@@ -86,7 +86,7 @@ async def example_with_default_context():
 
 async def example_context_manager():
     """Example using async context manager (automatically closes)."""
-    async with AsyncLogger(handlers=[ConsoleHandler()]) as logger:
+    async with AsyncLogger(sinks=[ConsoleSink()]) as logger:
         await logger.log("Task started", LogLevel.INFO)
         await logger.log("Task completed", LogLevel.INFO)
     # Logger automatically closed here

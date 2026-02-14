@@ -7,7 +7,7 @@ class MultilogError(Exception):
     pass
 
 
-class HandlerError(MultilogError):
-    """Raised when a handler fails to emit a log entry."""
+class SinkError(MultilogError):
+    """Raised when a sink fails to emit a log entry."""
 
     pass

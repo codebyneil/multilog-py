@@ -40,7 +40,7 @@ select = [
     "TCH", # flake8-type-checking
 ]
 ignore = [
-    "TC001",  # Allow runtime imports for type hints (needed for handler base classes)
+    "TC001",  # Allow runtime imports for type hints (needed for sink base classes)
 ]
 
 [tool.ruff.lint.isort]

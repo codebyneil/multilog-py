@@ -4,8 +4,8 @@ import asyncio
 from typing import Any
 
 from multilog._core import _LoggerCore
-from multilog.handlers.base import BaseHandler
 from multilog.levels import LogLevel
+from multilog.sinks.base import BaseSink
 
 
 class AsyncLogger:
@@ -14,7 +14,7 @@ class AsyncLogger:
 
     All logging methods are async and run the synchronous core methods
     in a thread executor via asyncio.to_thread(), keeping the event loop
-    unblocked during handler I/O (file writes, HTTP requests, etc.).
+    unblocked during sink I/O (file writes, HTTP requests, etc.).
 
     Example:
         async with AsyncLogger() as logger:
@@ -23,17 +23,17 @@ class AsyncLogger:
 
     def __init__(
         self,
-        handlers: list[BaseHandler] | None = None,
+        sinks: list[BaseSink] | None = None,
         default_context: dict[str, Any] | None = None,
     ):
         """
         Initialize the async logger.
 
         Args:
-            handlers: List of log handlers. If None, creates handlers from env.
+            sinks: List of log sinks. If None, creates sinks from env.
             default_context: Context merged into all log entries.
         """
-        self._core = _LoggerCore(handlers, default_context)
+        self._core = _LoggerCore(sinks, default_context)
 
     async def log(
         self,
@@ -42,7 +42,7 @@ class AsyncLogger:
         content: dict[str, Any] | None = None,
     ) -> None:
         """
-        Send a log entry to all configured handlers.
+        Send a log entry to all configured sinks.
 
         Runs in a thread executor to avoid blocking the event loop.
 
@@ -104,15 +104,13 @@ class AsyncLogger:
             exception: The exception object
             context: Additional context to include
         """
-        await asyncio.to_thread(
-            self._core.log_exception, message, exception, context
-        )
+        await asyncio.to_thread(self._core.log_exception, message, exception, context)
 
     async def close(self) -> None:
-        """Close all handlers. Runs in a thread executor."""
+        """Close all sinks. Runs in a thread executor."""
         await asyncio.to_thread(self._core.close)
 
-    async def __aenter__(self) -> "AsyncLogger":
+    async def __aenter__(self) -> AsyncLogger:
         """Enter async context manager."""
         return self
 

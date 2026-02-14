@@ -1,19 +1,19 @@
-"""Betterstack handler for multilog-py."""
+"""Betterstack sink for multilog-py."""
 
 import os
 from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from multilog.handlers.base import BaseHandler
 from multilog.levels import LogLevel
+from multilog.sinks.base import BaseSink
 
 if TYPE_CHECKING:
     from multilog.config import Config
 
 
-class BetterstackHandler(BaseHandler):
-    """Handler for sending logs to Betterstack."""
+class BetterstackSink(BaseSink):
+    """Sink for sending logs to Betterstack."""
 
     def __init__(
         self,
@@ -23,7 +23,7 @@ class BetterstackHandler(BaseHandler):
         timeout: float = 10.0,
     ):
         """
-        Initialize Betterstack handler.
+        Initialize Betterstack sink.
 
         Args:
             token: Betterstack authentication token (reads from BETTERSTACK_TOKEN env var if not provided)
@@ -41,23 +41,27 @@ class BetterstackHandler(BaseHandler):
         self.ingest_url = ingest_url or os.getenv("BETTERSTACK_INGEST_URL")
 
         if not self.token:
-            raise ValueError("betterstack_token is required (provide as argument or set BETTERSTACK_TOKEN env var)")
+            raise ValueError(
+                "betterstack_token is required (provide as argument or set BETTERSTACK_TOKEN env var)"
+            )
         if not self.ingest_url:
-            raise ValueError("betterstack_ingest_url is required (provide as argument or set BETTERSTACK_INGEST_URL env var)")
+            raise ValueError(
+                "betterstack_ingest_url is required (provide as argument or set BETTERSTACK_INGEST_URL env var)"
+            )
 
         self.timeout = timeout
         self._client: httpx.Client | None = None
 
     @classmethod
-    def from_config(cls, config: Config) -> BetterstackHandler:
+    def from_config(cls, config: Config) -> BetterstackSink:
         """
-        Create handler from config object.
+        Create sink from config object.
 
         Args:
             config: Config instance
 
         Returns:
-            BetterstackHandler instance
+            BetterstackSink instance
 
         Raises:
             ValueError: If token or ingest_url is missing

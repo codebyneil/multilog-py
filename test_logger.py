@@ -2,7 +2,7 @@
 
 import asyncio
 
-from multilog import AsyncLogger, ConsoleHandler, Logger, LogLevel
+from multilog import AsyncLogger, ConsoleSink, Logger, LogLevel
 
 
 def test_sync_basic():
@@ -11,7 +11,7 @@ def test_sync_basic():
     print("Testing SYNC basic logging")
     print("=" * 60)
 
-    logger = Logger(handlers=[ConsoleHandler()])
+    logger = Logger(sinks=[ConsoleSink()])
 
     # Test different log levels (no await!)
     logger.log("SYNC: Debug message", LogLevel.DEBUG, {"user_id": "123"})
@@ -28,7 +28,7 @@ def test_sync_endpoint():
     print("Testing SYNC endpoint logging")
     print("=" * 60)
 
-    logger = Logger(handlers=[ConsoleHandler()])
+    logger = Logger(sinks=[ConsoleSink()])
 
     logger.log_endpoint(
         endpoint_name="create_user",
@@ -48,7 +48,7 @@ def test_sync_exception():
     print("Testing SYNC exception logging")
     print("=" * 60)
 
-    logger = Logger(handlers=[ConsoleHandler()])
+    logger = Logger(sinks=[ConsoleSink()])
 
     try:
         _ = 10 / 0
@@ -64,7 +64,7 @@ def test_sync_context_manager():
     print("Testing SYNC context manager")
     print("=" * 60)
 
-    with Logger(handlers=[ConsoleHandler()]) as logger:
+    with Logger(sinks=[ConsoleSink()]) as logger:
         logger.log("SYNC: From context manager", LogLevel.INFO)
 
     print("✅ Logger automatically closed!")
@@ -76,7 +76,7 @@ async def test_async_basic():
     print("Testing ASYNC basic logging")
     print("=" * 60)
 
-    logger = AsyncLogger(handlers=[ConsoleHandler()])
+    logger = AsyncLogger(sinks=[ConsoleSink()])
 
     # Test different log levels (with await!)
     await logger.log("ASYNC: Debug message", LogLevel.DEBUG, {"user_id": "789"})
@@ -93,7 +93,7 @@ async def test_async_endpoint():
     print("Testing ASYNC endpoint logging")
     print("=" * 60)
 
-    logger = AsyncLogger(handlers=[ConsoleHandler()])
+    logger = AsyncLogger(sinks=[ConsoleSink()])
 
     await logger.log_endpoint(
         endpoint_name="update_user",
@@ -113,7 +113,7 @@ async def test_async_exception():
     print("Testing ASYNC exception logging")
     print("=" * 60)
 
-    logger = AsyncLogger(handlers=[ConsoleHandler()])
+    logger = AsyncLogger(sinks=[ConsoleSink()])
 
     try:
         raise ValueError("Async test error")
@@ -131,7 +131,7 @@ async def test_async_context_manager():
     print("Testing ASYNC context manager")
     print("=" * 60)
 
-    async with AsyncLogger(handlers=[ConsoleHandler()]) as logger:
+    async with AsyncLogger(sinks=[ConsoleSink()]) as logger:
         await logger.log("ASYNC: From context manager", LogLevel.INFO)
 
     print("✅ AsyncLogger automatically closed!")
@@ -144,7 +144,7 @@ def test_default_context():
     print("=" * 60)
 
     logger = Logger(
-        handlers=[ConsoleHandler()],
+        sinks=[ConsoleSink()],
         default_context={"service": "api", "env": "prod", "version": "1.0.0"},
     )
 

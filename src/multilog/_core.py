@@ -6,10 +6,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 from multilog.config import Config
-from multilog.handlers.base import BaseHandler
-from multilog.handlers.betterstack import BetterstackHandler
-from multilog.handlers.console import ConsoleHandler
 from multilog.levels import LogLevel
+from multilog.sinks.base import BaseSink
+from multilog.sinks.betterstack import BetterstackSink
+from multilog.sinks.console import ConsoleSink
 
 
 class _LoggerCore:
@@ -17,30 +17,30 @@ class _LoggerCore:
     Pure synchronous core containing shared logging logic.
 
     Both the synchronous Logger and AsyncLogger delegate to this class
-    for payload construction and handler dispatch.
+    for payload construction and sink dispatch.
     """
 
     def __init__(
         self,
-        handlers: list[BaseHandler] | None = None,
+        sinks: list[BaseSink] | None = None,
         default_context: dict[str, Any] | None = None,
     ):
-        self.handlers = handlers or self._create_default_handlers()
+        self.sinks = sinks or self._create_default_sinks()
         self.default_context = default_context or {}
 
-    def _create_default_handlers(self) -> list[BaseHandler]:
-        """Create default handlers from environment variables."""
+    def _create_default_sinks(self) -> list[BaseSink]:
+        """Create default sinks from environment variables."""
         config = Config.from_env()
-        handlers: list[BaseHandler] = []
+        sinks: list[BaseSink] = []
 
-        # Always include console handler
-        handlers.append(ConsoleHandler())
+        # Always include console sink
+        sinks.append(ConsoleSink())
 
         # Add Betterstack if both token and ingest URL are configured
         if config.betterstack_token and config.betterstack_ingest_url:
-            handlers.append(BetterstackHandler.from_config(config))
+            sinks.append(BetterstackSink.from_config(config))
 
-        return handlers
+        return sinks
 
     def _build_payload(
         self,
@@ -64,7 +64,7 @@ class _LoggerCore:
         content: dict[str, Any] | None = None,
     ) -> None:
         """
-        Send a log entry to all configured handlers synchronously.
+        Send a log entry to all configured sinks synchronously.
 
         Args:
             message: Log message
@@ -75,15 +75,15 @@ class _LoggerCore:
         self._dispatch(payload)
 
     def _dispatch(self, payload: dict[str, Any]) -> None:
-        """Dispatch payload to all handlers sequentially with error handling."""
-        for handler in self.handlers:
+        """Dispatch payload to all sinks sequentially with error handling."""
+        for sink in self.sinks:
             try:
                 log_level = LogLevel(payload.get("level", "info"))
-                if handler._should_log(log_level):
-                    handler.emit(payload)
+                if sink._should_log(log_level):
+                    sink.emit(payload)
             except Exception as exc:
                 print(
-                    f"Handler {handler.__class__.__name__} failed: {exc}",
+                    f"Sink {sink.__class__.__name__} failed: {exc}",
                     file=sys.stderr,
                 )
 
@@ -160,13 +160,13 @@ class _LoggerCore:
         )
 
     def close(self) -> None:
-        """Close all handlers that support cleanup."""
-        for handler in self.handlers:
-            if hasattr(handler, "close") and callable(handler.close):
+        """Close all sinks that support cleanup."""
+        for sink in self.sinks:
+            if hasattr(sink, "close") and callable(sink.close):
                 try:
-                    handler.close()
+                    sink.close()
                 except Exception as exc:
                     print(
-                        f"Handler {handler.__class__.__name__} close failed: {exc}",
+                        f"Sink {sink.__class__.__name__} close failed: {exc}",
                         file=sys.stderr,
                     )

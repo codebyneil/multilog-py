@@ -1,15 +1,15 @@
-"""File handler for multilog-py."""
+"""File sink for multilog-py."""
 
 import json
 from pathlib import Path
 from typing import Any
 
-from multilog.handlers.base import BaseHandler
 from multilog.levels import LogLevel
+from multilog.sinks.base import BaseSink
 
 
-class FileHandler(BaseHandler):
-    """Handler for logging to a file in JSONL format."""
+class FileSink(BaseSink):
+    """Sink for logging to a file in JSONL format."""
 
     def __init__(
         self,
@@ -18,7 +18,7 @@ class FileHandler(BaseHandler):
         append: bool = True,
     ):
         """
-        Initialize file handler.
+        Initialize file sink.
 
         Args:
             file_path: Path to the log file

@@ -43,17 +43,17 @@ class Config(BaseModel):
         Returns:
             Configured Logger instance
         """
-        from multilog.handlers.betterstack import BetterstackHandler
-        from multilog.handlers.console import ConsoleHandler
         from multilog.logger import Logger
+        from multilog.sinks.betterstack import BetterstackSink
+        from multilog.sinks.console import ConsoleSink
 
-        handlers = []
+        sinks = []
 
-        # Always include console handler
-        handlers.append(ConsoleHandler())
+        # Always include console sink
+        sinks.append(ConsoleSink())
 
         # Add Betterstack if both token and ingest URL are configured
         if self.betterstack_token and self.betterstack_ingest_url:
-            handlers.append(BetterstackHandler.from_config(self))
+            sinks.append(BetterstackSink.from_config(self))
 
-        return Logger(handlers=handlers, default_context=self.default_context)
+        return Logger(sinks=sinks, default_context=self.default_context)

@@ -5,7 +5,7 @@ A multi-destination Python logging library with first-class support for Betterst
 ## Features
 
 - 🚀 **Async-first design** - Non-blocking logging with full async/await support
-- 🎯 **Multiple destinations** - Log to Betterstack, console, files, or custom handlers
+- 🎯 **Multiple destinations** - Log to Betterstack, console, files, or custom sinks
 - 🔒 **Type-safe** - Full type hints with Pydantic validation
 - 📊 **Structured logging** - Rich metadata support for all log entries
 - 🌐 **HTTP request tracking** - Specialized endpoint invocation logging
@@ -44,17 +44,17 @@ async def main():
 asyncio.run(main())
 ```
 
-### Multiple Handlers
+### Multiple Sinks
 
 ```python
-from multilog import Logger, BetterstackHandler, ConsoleHandler
+from multilog import Logger, BetterstackSink, ConsoleSink
 
-logger = Logger(handlers=[
-    BetterstackHandler(
+logger = Logger(sinks=[
+    BetterstackSink(
         token="your-betterstack-token",
         ingest_url="https://s1598061.eu-nbg-2.betterstackdata.com"
     ),
-    ConsoleHandler(level=LogLevel.DEBUG)  # Also log to console
+    ConsoleSink(level=LogLevel.DEBUG)  # Also log to console
 ])
 ```
 
@@ -123,7 +123,7 @@ Add context to all log entries:
 
 ```python
 logger = Logger(
-    handlers=[ConsoleHandler()],
+    sinks=[ConsoleSink()],
     default_context={
         "service": "payment-api",
         "environment": "production",
@@ -146,14 +146,14 @@ async with Logger() as logger:
 # Logger automatically closed
 ```
 
-### Custom Handlers
+### Custom Sinks
 
-Create custom log destinations by extending `BaseHandler`:
+Create custom log destinations by extending `BaseSink`:
 
 ```python
-from multilog.handlers import BaseHandler
+from multilog.sinks import BaseSink
 
-class SlackHandler(BaseHandler):
+class SlackSink(BaseSink):
     def __init__(self, webhook_url: str):
         super().__init__()
         self.webhook_url = webhook_url
@@ -165,14 +165,14 @@ class SlackHandler(BaseHandler):
                 json={"text": payload["message"]}
             )
 
-logger = Logger(handlers=[SlackHandler("https://hooks.slack.com/...")])
+logger = Logger(sinks=[SlackSink("https://hooks.slack.com/...")])
 ```
 
 ## API Reference
 
 ### Logger
 
-**`Logger(handlers=None, default_context=None)`**
+**`Logger(sinks=None, default_context=None)`**
 
 Main logger class.
 
@@ -180,7 +180,7 @@ Main logger class.
 - `log(message, level, content)` - Log a message with optional metadata
 - `log_endpoint(endpoint_name, method, path, headers, ...)` - Log HTTP endpoint invocation
 - `log_exception(message, exception, context)` - Log exception with stacktrace
-- `close()` - Close all handlers
+- `close()` - Close all sinks
 
 ### LogLevel
 
@@ -192,12 +192,12 @@ Enum with values following OpenTelemetry specification:
 - `ERROR` - Error conditions
 - `FATAL` - Fatal/critical conditions
 
-### Handlers
+### Sinks
 
-- **BetterstackHandler** - Send logs to Betterstack
-- **ConsoleHandler** - Print logs to stdout/stderr with colors
-- **FileHandler** - Write logs to file in JSONL format
-- **BaseHandler** - Abstract base class for custom handlers
+- **BetterstackSink** - Send logs to Betterstack
+- **ConsoleSink** - Print logs to stdout/stderr with colors
+- **FileSink** - Write logs to file in JSONL format
+- **BaseSink** - Abstract base class for custom sinks
 
 ## Examples
 

@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from multilog._core import _LoggerCore
-from multilog.handlers.base import BaseHandler
 from multilog.levels import LogLevel
+from multilog.sinks.base import BaseSink
 
 
 class Logger:
@@ -14,7 +14,7 @@ class Logger:
     Synchronous multi-destination logger.
 
     Wraps _LoggerCore to provide a clean synchronous API for logging
-    to multiple handlers simultaneously.
+    to multiple sinks simultaneously.
 
     Example:
         logger = Logger()
@@ -27,17 +27,17 @@ class Logger:
 
     def __init__(
         self,
-        handlers: list[BaseHandler] | None = None,
+        sinks: list[BaseSink] | None = None,
         default_context: dict[str, Any] | None = None,
     ):
         """
         Initialize logger.
 
         Args:
-            handlers: List of log handlers. If None, creates handlers from env.
+            sinks: List of log sinks. If None, creates sinks from env.
             default_context: Context merged into all log entries.
         """
-        self._core = _LoggerCore(handlers, default_context)
+        self._core = _LoggerCore(sinks, default_context)
 
     def log(
         self,
@@ -46,7 +46,7 @@ class Logger:
         content: dict[str, Any] | None = None,
     ) -> None:
         """
-        Send a log entry to all configured handlers.
+        Send a log entry to all configured sinks.
 
         Args:
             message: Log message
@@ -77,9 +77,7 @@ class Logger:
             body: Request body
             context: Additional context to include
         """
-        self._core.log_endpoint(
-            endpoint_name, method, path, headers, query_params, body, context
-        )
+        self._core.log_endpoint(endpoint_name, method, path, headers, query_params, body, context)
 
     def log_exception(
         self,
@@ -98,7 +96,7 @@ class Logger:
         self._core.log_exception(message, exception, context)
 
     def close(self) -> None:
-        """Close all handlers that support cleanup."""
+        """Close all sinks that support cleanup."""
         self._core.close()
 
     def __enter__(self) -> Logger:

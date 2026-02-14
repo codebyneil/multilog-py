@@ -1,7 +1,7 @@
 """Test all OpenTelemetry log levels."""
 
 import asyncio
-from multilog import AsyncLogger, LogLevel, ConsoleHandler
+from multilog import AsyncLogger, LogLevel, ConsoleSink
 
 
 async def main():
@@ -10,7 +10,7 @@ async def main():
     print("Testing all OpenTelemetry log levels")
     print("=" * 60)
 
-    logger = AsyncLogger(handlers=[ConsoleHandler(level=LogLevel.TRACE)])
+    logger = AsyncLogger(sinks=[ConsoleSink(level=LogLevel.TRACE)])
 
     # Test all log levels
     await logger.log("Trace message - very detailed", LogLevel.TRACE, {"trace_id": "abc123"})
@@ -27,7 +27,7 @@ async def main():
     print("=" * 60)
 
     # Test filtering - only INFO and above
-    logger = AsyncLogger(handlers=[ConsoleHandler(level=LogLevel.INFO)])
+    logger = AsyncLogger(sinks=[ConsoleSink(level=LogLevel.INFO)])
 
     await logger.log("This TRACE won't show", LogLevel.TRACE)
     await logger.log("This DEBUG won't show", LogLevel.DEBUG)
