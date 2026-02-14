@@ -4,11 +4,11 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from multilog_py.handlers.base import BaseHandler
-from multilog_py.levels import LogLevel
+from multilog.handlers.base import BaseHandler
+from multilog.levels import LogLevel
 
 if TYPE_CHECKING:
-    from multilog_py.config import Config
+    from multilog.config import Config
 
 
 class BetterstackHandler(BaseHandler):
@@ -34,7 +34,7 @@ class BetterstackHandler(BaseHandler):
         self.token = token
         self.ingest_url = ingest_url
         self.timeout = timeout
-        self._client: httpx.AsyncClient | None = None
+        self._client: httpx.Client | None = None
 
     @classmethod
     def from_config(cls, config: Config) -> BetterstackHandler:
@@ -56,27 +56,27 @@ class BetterstackHandler(BaseHandler):
             level=config.log_level,
         )
 
-    async def _get_client(self) -> httpx.AsyncClient:
+    def _get_client(self) -> httpx.Client:
         """
         Lazy initialize HTTP client.
 
         Returns:
-            httpx.AsyncClient instance
+            httpx.Client instance
         """
         if self._client is None:
-            self._client = httpx.AsyncClient(timeout=self.timeout)
+            self._client = httpx.Client(timeout=self.timeout)
         return self._client
 
-    async def emit(self, payload: dict[str, Any]) -> None:
+    def emit(self, payload: dict[str, Any]) -> None:
         """
         Send log to Betterstack via HTTP POST.
 
         Args:
             payload: Log payload to send
         """
-        client = await self._get_client()
+        client = self._get_client()
 
-        response = await client.post(
+        response = client.post(
             self.ingest_url,
             headers={
                 "Authorization": f"Bearer {self.token}",
@@ -86,8 +86,8 @@ class BetterstackHandler(BaseHandler):
         )
         response.raise_for_status()
 
-    async def close(self) -> None:
+    def close(self) -> None:
         """Close the HTTP client."""
         if self._client:
-            await self._client.aclose()
+            self._client.close()
             self._client = None

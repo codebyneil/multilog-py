@@ -4,7 +4,7 @@ import sys
 from abc import ABC, abstractmethod
 from typing import Any
 
-from multilog_py.levels import LogLevel
+from multilog.levels import LogLevel
 
 
 class BaseHandler(ABC):
@@ -20,7 +20,7 @@ class BaseHandler(ABC):
         self.level = level
 
     @abstractmethod
-    async def emit(self, payload: dict[str, Any]) -> None:
+    def emit(self, payload: dict[str, Any]) -> None:
         """
         Send a log entry to the destination.
 
@@ -34,7 +34,7 @@ class BaseHandler(ABC):
         """
         pass
 
-    async def handle(self, payload: dict[str, Any]) -> None:
+    def handle(self, payload: dict[str, Any]) -> None:
         """
         Handle a log entry with error handling.
 
@@ -47,7 +47,7 @@ class BaseHandler(ABC):
         try:
             log_level = LogLevel(payload.get("level", "info"))
             if self._should_log(log_level):
-                await self.emit(payload)
+                self.emit(payload)
         except Exception as exc:
             # Graceful degradation - log to stderr but don't crash
             print(

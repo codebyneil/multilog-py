@@ -1,19 +1,19 @@
 """Simple example demonstrating multilog-py usage."""
 
 import asyncio
-from multilog_py import Logger, LogLevel, ConsoleHandler, BetterstackHandler
+from multilog import AsyncLogger, LogLevel, ConsoleHandler, BetterstackHandler
 
 
 async def example_basic_usage():
     """Basic logging example."""
     # Option 1: Auto-detect from environment (uses BETTERSTACK_TOKEN if set)
-    logger = Logger()
+    logger = AsyncLogger()
 
     # Option 2: Explicit console handler for testing
-    # logger = Logger(handlers=[ConsoleHandler()])
+    # logger = AsyncLogger(handlers=[ConsoleHandler()])
 
     # Option 3: Multiple handlers (Betterstack + Console)
-    # logger = Logger(handlers=[
+    # logger = AsyncLogger(handlers=[
     #     BetterstackHandler(
     #         token="your-token",
     #         ingest_url="https://s1598061.eu-nbg-2.betterstackdata.com"
@@ -32,7 +32,7 @@ async def example_basic_usage():
 
 async def example_endpoint_logging():
     """Example of logging HTTP endpoint invocations."""
-    logger = Logger(handlers=[ConsoleHandler()])
+    logger = AsyncLogger(handlers=[ConsoleHandler()])
 
     # Log an API endpoint call with full request details
     await logger.log_endpoint(
@@ -50,7 +50,7 @@ async def example_endpoint_logging():
 
 async def example_exception_logging():
     """Example of logging exceptions with full stacktraces."""
-    logger = Logger(handlers=[ConsoleHandler()])
+    logger = AsyncLogger(handlers=[ConsoleHandler()])
 
     try:
         # Simulate an error
@@ -69,7 +69,7 @@ async def example_exception_logging():
 async def example_with_default_context():
     """Example using default context for all logs."""
     # Set context that will be included in ALL logs from this logger
-    logger = Logger(
+    logger = AsyncLogger(
         handlers=[ConsoleHandler()],
         default_context={
             "service": "payment-api",
@@ -86,7 +86,7 @@ async def example_with_default_context():
 
 async def example_context_manager():
     """Example using async context manager (automatically closes)."""
-    async with Logger(handlers=[ConsoleHandler()]) as logger:
+    async with AsyncLogger(handlers=[ConsoleHandler()]) as logger:
         await logger.log("Task started", LogLevel.INFO)
         await logger.log("Task completed", LogLevel.INFO)
     # Logger automatically closed here

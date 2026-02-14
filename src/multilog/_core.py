@@ -1,25 +1,23 @@
-"""Main Logger class for multilog-py."""
+"""Shared synchronous core logic for multilog-py loggers."""
 
-import asyncio
+import sys
 import traceback as tb
 from datetime import UTC, datetime
 from typing import Any
 
-from multilog_py.config import Config
-from multilog_py.handlers.base import BaseHandler
-from multilog_py.handlers.betterstack import BetterstackHandler
-from multilog_py.handlers.console import ConsoleHandler
-from multilog_py.levels import LogLevel
-from multilog_py.utils import serialize_error
+from multilog.config import Config
+from multilog.handlers.base import BaseHandler
+from multilog.handlers.betterstack import BetterstackHandler
+from multilog.handlers.console import ConsoleHandler
+from multilog.levels import LogLevel
 
 
-class Logger:
+class _LoggerCore:
     """
-    Multi-destination logger supporting multiple handlers.
+    Pure synchronous core containing shared logging logic.
 
-    Example:
-        logger = Logger()
-        await logger.log("User action", LogLevel.INFO, {"user_id": 123})
+    Both the synchronous Logger and AsyncLogger delegate to this class
+    for payload construction and handler dispatch.
     """
 
     def __init__(
@@ -27,49 +25,29 @@ class Logger:
         handlers: list[BaseHandler] | None = None,
         default_context: dict[str, Any] | None = None,
     ):
-        """
-        Initialize logger.
-
-        Args:
-            handlers: List of log handlers. If None, creates handlers from env.
-            default_context: Context merged into all log entries.
-        """
         self.handlers = handlers or self._create_default_handlers()
         self.default_context = default_context or {}
 
     def _create_default_handlers(self) -> list[BaseHandler]:
-        """
-        Create default handlers from environment variables.
-
-        Returns:
-            List of handlers (Betterstack if configured, otherwise Console)
-        """
+        """Create default handlers from environment variables."""
         config = Config.from_env()
         handlers: list[BaseHandler] = []
 
         if config.betterstack_token:
             handlers.append(BetterstackHandler.from_config(config))
         else:
-            # Fallback to console if no Betterstack config
             handlers.append(ConsoleHandler())
 
         return handlers
 
-    async def log(
+    def _build_payload(
         self,
         message: str,
         level: LogLevel,
         content: dict[str, Any] | None = None,
-    ) -> None:
-        """
-        Send a log entry to all configured handlers.
-
-        Args:
-            message: Log message
-            level: Log level
-            content: Additional metadata to include
-        """
-        payload = {
+    ) -> dict[str, Any]:
+        """Build the log payload dictionary."""
+        return {
             "timestamp_ms": int(datetime.now(UTC).timestamp() * 1000),
             "message": message,
             "level": level.value,
@@ -77,13 +55,37 @@ class Logger:
             **(content or {}),
         }
 
-        # Dispatch to all handlers concurrently
-        await asyncio.gather(
-            *[handler.handle(payload) for handler in self.handlers],
-            return_exceptions=True,  # Don't let one handler failure stop others
-        )
+    def log(
+        self,
+        message: str,
+        level: LogLevel,
+        content: dict[str, Any] | None = None,
+    ) -> None:
+        """
+        Send a log entry to all configured handlers synchronously.
 
-    async def log_endpoint(
+        Args:
+            message: Log message
+            level: Log level
+            content: Additional metadata to include
+        """
+        payload = self._build_payload(message, level, content)
+        self._dispatch(payload)
+
+    def _dispatch(self, payload: dict[str, Any]) -> None:
+        """Dispatch payload to all handlers sequentially with error handling."""
+        for handler in self.handlers:
+            try:
+                log_level = LogLevel(payload.get("level", "info"))
+                if handler._should_log(log_level):
+                    handler.emit(payload)
+            except Exception as exc:
+                print(
+                    f"Handler {handler.__class__.__name__} failed: {exc}",
+                    file=sys.stderr,
+                )
+
+    def log_endpoint(
         self,
         endpoint_name: str,
         method: str,
@@ -102,10 +104,10 @@ class Logger:
             path: URL path
             headers: Request headers
             query_params: Query string parameters
-            body: Request body (will be JSON serialized if possible)
+            body: Request body
             context: Additional context to include
         """
-        await self.log(
+        self.log(
             f"Endpoint Invoked: {endpoint_name}",
             LogLevel.INFO,
             {
@@ -123,7 +125,7 @@ class Logger:
             },
         )
 
-    async def log_exception(
+    def log_exception(
         self,
         message: str,
         exception: Exception,
@@ -137,14 +139,13 @@ class Logger:
             exception: The exception object
             context: Additional context to include
         """
-        # Extract traceback
         tb_lines = tb.format_exception(
             type(exception),
             exception,
             exception.__traceback__,
         )
 
-        await self.log(
+        self.log(
             message,
             LogLevel.ERROR,
             {
@@ -152,21 +153,18 @@ class Logger:
                 "exception_type": type(exception).__name__,
                 "exception_message": str(exception),
                 "traceback": tb_lines,
-                "error_object": serialize_error(exception),
                 **(context or {}),
             },
         )
 
-    async def close(self) -> None:
+    def close(self) -> None:
         """Close all handlers that support cleanup."""
         for handler in self.handlers:
-            if hasattr(handler, "close") and callable(getattr(handler, "close")):
-                await handler.close()  # type: ignore[misc]
-
-    async def __aenter__(self) -> Logger:
-        """Enter async context manager."""
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Exit async context manager and cleanup."""
-        await self.close()
+            if hasattr(handler, "close") and callable(handler.close):
+                try:
+                    handler.close()
+                except Exception as exc:
+                    print(
+                        f"Handler {handler.__class__.__name__} close failed: {exc}",
+                        file=sys.stderr,
+                    )

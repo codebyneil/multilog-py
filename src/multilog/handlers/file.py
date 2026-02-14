@@ -4,10 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-import aiofiles
-
-from multilog_py.handlers.base import BaseHandler
-from multilog_py.levels import LogLevel
+from multilog.handlers.base import BaseHandler
+from multilog.levels import LogLevel
 
 
 class FileHandler(BaseHandler):
@@ -34,12 +32,12 @@ class FileHandler(BaseHandler):
         # Ensure parent directory exists
         self.file_path.parent.mkdir(parents=True, exist_ok=True)
 
-    async def emit(self, payload: dict[str, Any]) -> None:
+    def emit(self, payload: dict[str, Any]) -> None:
         """
         Write log entry to file as JSON line.
 
         Args:
             payload: Log payload to write
         """
-        async with aiofiles.open(self.file_path, mode=self.mode) as f:
-            await f.write(json.dumps(payload) + "\n")
+        with open(self.file_path, mode=self.mode) as f:
+            f.write(json.dumps(payload) + "\n")

@@ -31,7 +31,7 @@ pip install multilog-py
 
 ```python
 import asyncio
-from multilog_py import Logger, LogLevel
+from multilog import Logger, LogLevel
 
 async def main():
     # Auto-detect from BETTERSTACK_TOKEN environment variable
@@ -47,7 +47,7 @@ asyncio.run(main())
 ### Multiple Handlers
 
 ```python
-from multilog_py import Logger, BetterstackHandler, ConsoleHandler
+from multilog import Logger, BetterstackHandler, ConsoleHandler
 
 logger = Logger(handlers=[
     BetterstackHandler(
@@ -100,7 +100,7 @@ Set these environment variables for automatic configuration:
 ### Programmatic Configuration
 
 ```python
-from multilog_py import Config
+from multilog import Config
 
 # From environment
 config = Config.from_env()
@@ -151,7 +151,7 @@ async with Logger() as logger:
 Create custom log destinations by extending `BaseHandler`:
 
 ```python
-from multilog_py.handlers import BaseHandler
+from multilog.handlers import BaseHandler
 
 class SlackHandler(BaseHandler):
     def __init__(self, webhook_url: str):

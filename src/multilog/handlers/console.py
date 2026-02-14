@@ -4,8 +4,8 @@ import json
 import sys
 from typing import Any
 
-from multilog_py.handlers.base import BaseHandler
-from multilog_py.levels import LogLevel
+from multilog.handlers.base import BaseHandler
+from multilog.levels import LogLevel
 
 
 class ConsoleHandler(BaseHandler):
@@ -33,7 +33,7 @@ class ConsoleHandler(BaseHandler):
         super().__init__(level)
         self.use_color = use_color
 
-    async def emit(self, payload: dict[str, Any]) -> None:
+    def emit(self, payload: dict[str, Any]) -> None:
         """
         Print formatted log to stdout or stderr.
 

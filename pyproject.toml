@@ -1,16 +1,15 @@
 [project]
-name = "multilog-py"
+name = "multilog"
 version = "0.1.0"
 description = "Multi-destination logging library with Betterstack integration"
 readme = "README.md"
 authors = [
-    { name = "Neil", email = "121339378+codebyneil@users.noreply.github.com" }
+    { name = "Neil", email = "neil@machine.local" }
 ]
 requires-python = ">=3.14"
 dependencies = [
     "httpx>=0.27.0",
     "pydantic>=2.0.0",
-    "aiofiles>=23.0.0",
 ]
 
 [dependency-groups]
@@ -45,4 +44,4 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["multilog_py"]
+known-first-party = ["multilog"]

@@ -5,10 +5,10 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
-from multilog_py.levels import LogLevel
+from multilog.levels import LogLevel
 
 if TYPE_CHECKING:
-    from multilog_py.logger import Logger
+    from multilog.logger import Logger
 
 
 class Config(BaseModel):
@@ -46,8 +46,8 @@ class Config(BaseModel):
         Returns:
             Configured Logger instance
         """
-        from multilog_py.handlers.betterstack import BetterstackHandler
-        from multilog_py.logger import Logger
+        from multilog.handlers.betterstack import BetterstackHandler
+        from multilog.logger import Logger
 
         handlers = []
 
