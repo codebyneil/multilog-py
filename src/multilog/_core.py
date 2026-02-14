@@ -1,11 +1,11 @@
 """Shared synchronous core logic for multilog-py loggers."""
 
+import os
 import sys
 import traceback as tb
 from datetime import UTC, datetime
 from typing import Any
 
-from multilog.config import Config
 from multilog.levels import LogLevel
 from multilog.sinks.base import BaseSink
 from multilog.sinks.betterstack import BetterstackSink
@@ -25,22 +25,8 @@ class _LoggerCore:
         sinks: list[BaseSink] | None = None,
         default_context: dict[str, Any] | None = None,
     ):
-        self.sinks = sinks or self._create_default_sinks()
+        self.sinks = sinks if sinks is not None else _default_sinks()
         self.default_context = default_context or {}
-
-    def _create_default_sinks(self) -> list[BaseSink]:
-        """Create default sinks from environment variables."""
-        config = Config.from_env()
-        sinks: list[BaseSink] = []
-
-        # Always include console sink
-        sinks.append(ConsoleSink())
-
-        # Add Betterstack if both token and ingest URL are configured
-        if config.betterstack_token and config.betterstack_ingest_url:
-            sinks.append(BetterstackSink.from_config(config))
-
-        return sinks
 
     def _build_payload(
         self,
@@ -170,3 +156,26 @@ class _LoggerCore:
                         f"Sink {sink.__class__.__name__} close failed: {exc}",
                         file=sys.stderr,
                     )
+
+
+def _default_sinks() -> list[BaseSink]:
+    """Create default sinks from environment variables."""
+    sinks: list[BaseSink] = []
+
+    sinks.append(ConsoleSink())
+
+    token = os.getenv("BETTERSTACK_TOKEN")
+    ingest_url = os.getenv("BETTERSTACK_INGEST_URL")
+
+    if token or ingest_url:
+        if not token:
+            raise ValueError(
+                "BETTERSTACK_INGEST_URL is set but BETTERSTACK_TOKEN is missing"
+            )
+        if not ingest_url:
+            raise ValueError(
+                "BETTERSTACK_TOKEN is set but BETTERSTACK_INGEST_URL is missing"
+            )
+        sinks.append(BetterstackSink(token=token, ingest_url=ingest_url))
+
+    return sinks

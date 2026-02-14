@@ -22,18 +22,24 @@ class ConsoleSink(BaseSink):
         "reset": "\033[0m",  # Reset
     }
 
-    def __init__(self, level: LogLevel = LogLevel.DEBUG, use_color: bool = True):
+    def __init__(
+        self,
+        use_color: bool = True,
+        default_context: dict[str, Any] | None = None,
+        included_levels: list[LogLevel] | None = None,
+    ):
         """
         Initialize console sink.
 
         Args:
-            level: Minimum log level to emit
             use_color: Whether to use ANSI color codes
+            default_context: Default context merged into all log entries from this sink.
+            included_levels: Log levels this sink will emit. Defaults to all levels.
         """
-        super().__init__(level)
+        super().__init__(default_context=default_context, included_levels=included_levels)
         self.use_color = use_color
 
-    def emit(self, payload: dict[str, Any]) -> None:
+    def _emit(self, payload: dict[str, Any]) -> None:
         """
         Print formatted log to stdout or stderr.
 

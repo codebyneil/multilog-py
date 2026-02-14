@@ -9,24 +9,43 @@ from multilog.levels import LogLevel
 class BaseSink(ABC):
     """Abstract base class for log sinks."""
 
-    def __init__(self, level: LogLevel = LogLevel.DEBUG):
+    def __init__(
+        self,
+        default_context: dict[str, Any] | None = None,
+        included_levels: list[LogLevel] | None = None,
+    ):
         """
         Initialize the sink.
 
         Args:
-            level: Minimum log level to emit (default: DEBUG)
+            default_context: Default context merged into all log entries from this sink.
+            included_levels: Log levels this sink will emit. Defaults to all levels.
         """
-        self.level = level
+        self.default_context = default_context or {}
+        self.included_levels = included_levels if included_levels is not None else list(LogLevel)
+
+    def emit(self, payload: dict[str, Any]) -> None:
+        """
+        Merge sink default_context into the payload and delegate to _emit.
+
+        Args:
+            payload: Dictionary containing log data
+        """
+        if self.default_context:
+            merged = {**self.default_context, **payload}
+        else:
+            merged = payload
+        self._emit(merged)
 
     @abstractmethod
-    def emit(self, payload: dict[str, Any]) -> None:
+    def _emit(self, payload: dict[str, Any]) -> None:
         """
         Send a log entry to the destination.
 
         Must be implemented by subclasses.
 
         Args:
-            payload: Dictionary containing log data
+            payload: Dictionary containing log data (with sink context already merged)
 
         Raises:
             SinkError: If the sink fails to emit the log
@@ -41,6 +60,6 @@ class BaseSink(ABC):
             log_level: The log level to check
 
         Returns:
-            True if the log should be emitted, False otherwise
+            True if the log level is in included_levels, False otherwise
         """
-        return log_level >= self.level
+        return log_level in self.included_levels

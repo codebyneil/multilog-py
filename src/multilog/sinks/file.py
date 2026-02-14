@@ -14,25 +14,27 @@ class FileSink(BaseSink):
     def __init__(
         self,
         file_path: str | Path,
-        level: LogLevel = LogLevel.DEBUG,
         append: bool = True,
+        default_context: dict[str, Any] | None = None,
+        included_levels: list[LogLevel] | None = None,
     ):
         """
         Initialize file sink.
 
         Args:
             file_path: Path to the log file
-            level: Minimum log level to emit
             append: Whether to append to existing file (True) or overwrite (False)
+            default_context: Default context merged into all log entries from this sink.
+            included_levels: Log levels this sink will emit. Defaults to all levels.
         """
-        super().__init__(level)
+        super().__init__(default_context=default_context, included_levels=included_levels)
         self.file_path = Path(file_path)
         self.mode = "a" if append else "w"
 
         # Ensure parent directory exists
         self.file_path.parent.mkdir(parents=True, exist_ok=True)
 
-    def emit(self, payload: dict[str, Any]) -> None:
+    def _emit(self, payload: dict[str, Any]) -> None:
         """
         Write log entry to file as JSON line.
 

@@ -1,15 +1,11 @@
 """Betterstack sink for multilog-py."""
 
-import os
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import httpx
 
 from multilog.levels import LogLevel
 from multilog.sinks.base import BaseSink
-
-if TYPE_CHECKING:
-    from multilog.config import Config
 
 
 class BetterstackSink(BaseSink):
@@ -17,65 +13,27 @@ class BetterstackSink(BaseSink):
 
     def __init__(
         self,
-        token: str | None = None,
-        ingest_url: str | None = None,
-        level: LogLevel = LogLevel.DEBUG,
+        token: str,
+        ingest_url: str,
         timeout: float = 10.0,
+        default_context: dict[str, Any] | None = None,
+        included_levels: list[LogLevel] | None = None,
     ):
         """
         Initialize Betterstack sink.
 
         Args:
-            token: Betterstack authentication token (reads from BETTERSTACK_TOKEN env var if not provided)
-            ingest_url: Betterstack ingest URL (reads from BETTERSTACK_INGEST_URL env var if not provided)
-            level: Minimum log level to emit
+            token: Betterstack authentication token
+            ingest_url: Betterstack ingest URL
             timeout: HTTP request timeout in seconds
-
-        Raises:
-            ValueError: If token or ingest_url is not provided and not found in environment variables
+            default_context: Default context merged into all log entries from this sink.
+            included_levels: Log levels this sink will emit. Defaults to all levels.
         """
-        super().__init__(level)
-
-        # Read from environment if not provided
-        self.token = token or os.getenv("BETTERSTACK_TOKEN")
-        self.ingest_url = ingest_url or os.getenv("BETTERSTACK_INGEST_URL")
-
-        if not self.token:
-            raise ValueError(
-                "betterstack_token is required (provide as argument or set BETTERSTACK_TOKEN env var)"
-            )
-        if not self.ingest_url:
-            raise ValueError(
-                "betterstack_ingest_url is required (provide as argument or set BETTERSTACK_INGEST_URL env var)"
-            )
-
+        super().__init__(default_context=default_context, included_levels=included_levels)
+        self.token = token
+        self.ingest_url = ingest_url
         self.timeout = timeout
         self._client: httpx.Client | None = None
-
-    @classmethod
-    def from_config(cls, config: Config) -> BetterstackSink:
-        """
-        Create sink from config object.
-
-        Args:
-            config: Config instance
-
-        Returns:
-            BetterstackSink instance
-
-        Raises:
-            ValueError: If token or ingest_url is missing
-        """
-        if not config.betterstack_token:
-            raise ValueError("betterstack_token is required")
-        if not config.betterstack_ingest_url:
-            raise ValueError("betterstack_ingest_url is required")
-
-        return cls(
-            token=config.betterstack_token,
-            ingest_url=config.betterstack_ingest_url,
-            level=config.log_level,
-        )
 
     def _get_client(self) -> httpx.Client:
         """
@@ -88,7 +46,7 @@ class BetterstackSink(BaseSink):
             self._client = httpx.Client(timeout=self.timeout)
         return self._client
 
-    def emit(self, payload: dict[str, Any]) -> None:
+    def _emit(self, payload: dict[str, Any]) -> None:
         """
         Send log to Betterstack via HTTP POST.
 
