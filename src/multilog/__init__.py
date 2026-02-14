@@ -15,7 +15,7 @@ Example usage (asynchronous):
 """
 
 from multilog.async_logger import AsyncLogger
-from multilog.exceptions import MultilogError, SinkError
+from multilog.exceptions import ConfigError, MultilogError, SinkError
 from multilog.levels import LogLevel
 from multilog.logger import Logger
 from multilog.sinks import (
@@ -35,6 +35,7 @@ __all__ = [
     "BetterstackSink",
     "ConsoleSink",
     "FileSink",
+    "ConfigError",
     "MultilogError",
     "SinkError",
 ]

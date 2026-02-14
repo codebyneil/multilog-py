@@ -6,6 +6,7 @@ import traceback as tb
 from datetime import UTC, datetime
 from typing import Any
 
+from multilog.exceptions import ConfigError
 from multilog.levels import LogLevel
 from multilog.sinks.base import BaseSink
 from multilog.sinks.betterstack import BetterstackSink
@@ -169,11 +170,11 @@ def _default_sinks() -> list[BaseSink]:
 
     if token or ingest_url:
         if not token:
-            raise ValueError(
+            raise ConfigError(
                 "BETTERSTACK_INGEST_URL is set but BETTERSTACK_TOKEN is missing"
             )
         if not ingest_url:
-            raise ValueError(
+            raise ConfigError(
                 "BETTERSTACK_TOKEN is set but BETTERSTACK_INGEST_URL is missing"
             )
         sinks.append(BetterstackSink(token=token, ingest_url=ingest_url))
