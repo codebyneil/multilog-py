@@ -17,7 +17,7 @@ Example usage (asynchronous):
 import contextlib
 
 from multilog.async_logger import AsyncLogger
-from multilog.exceptions import ConfigError, MultilogError, SinkError
+from multilog.exceptions import ConfigError, ContextError, MultilogError, SinkError
 from multilog.levels import LogLevel
 from multilog.logger import Logger
 from multilog.sinks import (
@@ -42,6 +42,7 @@ __all__ = [
     "FileSink",
     "RichConsoleSink",
     "ConfigError",
+    "ContextError",
     "MultilogError",
     "SinkError",
 ]

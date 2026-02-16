@@ -6,7 +6,7 @@ import traceback as tb
 from datetime import UTC, datetime
 from typing import Any
 
-from multilog.exceptions import ConfigError
+from multilog.exceptions import ConfigError, ContextError
 from multilog.levels import LogLevel
 from multilog.sinks.base import BaseSink
 from multilog.sinks.betterstack import BetterstackSink
@@ -157,6 +157,35 @@ class _LoggerCore:
                         f"Sink {sink.__class__.__name__} close failed: {exc}",
                         file=sys.stderr,
                     )
+
+    def update_context(self, **kwargs: Any) -> None:
+        """Merge key-value pairs into the logger's default context.
+
+        Existing keys with the same name are overwritten.
+
+        Args:
+            **kwargs: Key-value pairs to merge into default_context.
+        """
+        self.default_context.update(kwargs)
+
+    def remove_context(self, *keys: str) -> None:
+        """Remove keys from the logger's default context.
+
+        Args:
+            *keys: Names of keys to remove from default_context.
+
+        Raises:
+            ContextError: If any key does not exist in the context.
+        """
+        missing = [k for k in keys if k not in self.default_context]
+        if missing:
+            raise ContextError(f"Keys not found in context: {', '.join(missing)}")
+        for key in keys:
+            del self.default_context[key]
+
+    def clear_context(self) -> None:
+        """Remove all keys from the logger's default context."""
+        self.default_context.clear()
 
 
 def _default_sinks() -> list[BaseSink]:

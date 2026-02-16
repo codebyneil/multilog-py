@@ -112,6 +112,31 @@ class AsyncLogger:
         """Close all sinks. Runs in a thread executor."""
         await asyncio.to_thread(self._core.close)
 
+    def update_context(self, **kwargs: Any) -> None:
+        """Merge key-value pairs into the logger's default context.
+
+        Existing keys with the same name are overwritten.
+
+        Args:
+            **kwargs: Key-value pairs to merge into default_context.
+        """
+        self._core.update_context(**kwargs)
+
+    def remove_context(self, *keys: str) -> None:
+        """Remove keys from the logger's default context.
+
+        Args:
+            *keys: Names of keys to remove from default_context.
+
+        Raises:
+            ContextError: If any key does not exist in the context.
+        """
+        self._core.remove_context(*keys)
+
+    def clear_context(self) -> None:
+        """Remove all keys from the logger's default context."""
+        self._core.clear_context()
+
     async def __aenter__(self) -> AsyncLogger:
         """Enter async context manager."""
         return self

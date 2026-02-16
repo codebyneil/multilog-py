@@ -17,3 +17,9 @@ class SinkError(MultilogError):
     """Raised when a sink fails to emit a log entry."""
 
     pass
+
+
+class ContextError(MultilogError):
+    """Raised when a context key operation fails (e.g. removing a non-existent key)."""
+
+    pass
