@@ -16,7 +16,7 @@ def test_sync_basic():
     # Test different log levels (no await!)
     logger.log("SYNC: Debug message", LogLevel.DEBUG, {"user_id": "123"})
     logger.log("SYNC: User logged in", LogLevel.INFO, {"user_id": "456"})
-    logger.log("SYNC: Query slow", LogLevel.WARN, {"duration_ms": 1500})
+    logger.log("SYNC: Query slow", LogLevel.WARNING, {"duration_ms": 1500})
     logger.log("SYNC: Payment failed", LogLevel.ERROR, {"error": "timeout"})
 
     logger.close()
@@ -81,7 +81,7 @@ async def test_async_basic():
     # Test different log levels (with await!)
     await logger.log("ASYNC: Debug message", LogLevel.DEBUG, {"user_id": "789"})
     await logger.log("ASYNC: User logged in", LogLevel.INFO, {"user_id": "012"})
-    await logger.log("ASYNC: Query slow", LogLevel.WARN, {"duration_ms": 2000})
+    await logger.log("ASYNC: Query slow", LogLevel.WARNING, {"duration_ms": 2000})
     await logger.log("ASYNC: Payment failed", LogLevel.ERROR, {"error": "network"})
 
     await logger.close()

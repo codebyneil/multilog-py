@@ -10,9 +10,9 @@ ALL_LEVELS = [
     LogLevel.TRACE,
     LogLevel.DEBUG,
     LogLevel.INFO,
-    LogLevel.WARN,
+    LogLevel.WARNING,
     LogLevel.ERROR,
-    LogLevel.FATAL,
+    LogLevel.CRITICAL,
 ]
 
 
@@ -21,18 +21,18 @@ ALL_LEVELS = [
 
 class TestSliceWithMembers:
     def test_middle_range(self):
-        assert LogLevel[LogLevel.INFO : LogLevel.FATAL] == [
+        assert LogLevel[LogLevel.INFO : LogLevel.CRITICAL] == [
             LogLevel.INFO,
-            LogLevel.WARN,
+            LogLevel.WARNING,
             LogLevel.ERROR,
-            LogLevel.FATAL,
+            LogLevel.CRITICAL,
         ]
 
     def test_full_range(self):
-        assert LogLevel[LogLevel.TRACE : LogLevel.FATAL] == ALL_LEVELS
+        assert LogLevel[LogLevel.TRACE : LogLevel.CRITICAL] == ALL_LEVELS
 
     def test_single_element(self):
-        assert LogLevel[LogLevel.WARN : LogLevel.WARN] == [LogLevel.WARN]
+        assert LogLevel[LogLevel.WARNING : LogLevel.WARNING] == [LogLevel.WARNING]
 
     def test_first_two(self):
         assert LogLevel[LogLevel.TRACE : LogLevel.DEBUG] == [
@@ -41,9 +41,9 @@ class TestSliceWithMembers:
         ]
 
     def test_last_two(self):
-        assert LogLevel[LogLevel.ERROR : LogLevel.FATAL] == [
+        assert LogLevel[LogLevel.ERROR : LogLevel.CRITICAL] == [
             LogLevel.ERROR,
-            LogLevel.FATAL,
+            LogLevel.CRITICAL,
         ]
 
     def test_adjacent_pair(self):
@@ -58,19 +58,19 @@ class TestSliceWithMembers:
 
 class TestSliceWithValueStrings:
     def test_lowercase_values(self):
-        assert LogLevel["info":"fatal"] == [
+        assert LogLevel["info":"critical"] == [
             LogLevel.INFO,
-            LogLevel.WARN,
+            LogLevel.WARNING,
             LogLevel.ERROR,
-            LogLevel.FATAL,
+            LogLevel.CRITICAL,
         ]
 
-    def test_trace_to_warn(self):
-        assert LogLevel["trace":"warn"] == [
+    def test_trace_to_warning(self):
+        assert LogLevel["trace":"warning"] == [
             LogLevel.TRACE,
             LogLevel.DEBUG,
             LogLevel.INFO,
-            LogLevel.WARN,
+            LogLevel.WARNING,
         ]
 
 
@@ -79,18 +79,18 @@ class TestSliceWithValueStrings:
 
 class TestSliceWithNameStrings:
     def test_uppercase_names(self):
-        assert LogLevel["INFO":"FATAL"] == [
+        assert LogLevel["INFO":"CRITICAL"] == [
             LogLevel.INFO,
-            LogLevel.WARN,
+            LogLevel.WARNING,
             LogLevel.ERROR,
-            LogLevel.FATAL,
+            LogLevel.CRITICAL,
         ]
 
     def test_debug_to_error(self):
         assert LogLevel["DEBUG":"ERROR"] == [
             LogLevel.DEBUG,
             LogLevel.INFO,
-            LogLevel.WARN,
+            LogLevel.WARNING,
             LogLevel.ERROR,
         ]
 
@@ -107,27 +107,27 @@ class TestOpenEndedSlices:
         ]
 
     def test_open_end(self):
-        assert LogLevel[LogLevel.WARN :] == [
-            LogLevel.WARN,
+        assert LogLevel[LogLevel.WARNING :] == [
+            LogLevel.WARNING,
             LogLevel.ERROR,
-            LogLevel.FATAL,
+            LogLevel.CRITICAL,
         ]
 
     def test_fully_open(self):
         assert LogLevel[:] == ALL_LEVELS
 
     def test_open_start_string(self):
-        assert LogLevel[:"warn"] == [
+        assert LogLevel[:"warning"] == [
             LogLevel.TRACE,
             LogLevel.DEBUG,
             LogLevel.INFO,
-            LogLevel.WARN,
+            LogLevel.WARNING,
         ]
 
     def test_open_end_string(self):
         assert LogLevel["error":] == [
             LogLevel.ERROR,
-            LogLevel.FATAL,
+            LogLevel.CRITICAL,
         ]
 
 
@@ -136,14 +136,14 @@ class TestOpenEndedSlices:
 
 class TestSliceEdgeCases:
     def test_reversed_range_returns_empty(self):
-        assert LogLevel[LogLevel.FATAL : LogLevel.TRACE] == []
+        assert LogLevel[LogLevel.CRITICAL : LogLevel.TRACE] == []
 
     def test_reversed_adjacent_returns_empty(self):
         assert LogLevel[LogLevel.INFO : LogLevel.DEBUG] == []
 
     def test_invalid_start_raises(self):
         with pytest.raises((ValueError, KeyError)):
-            LogLevel["bogus" : LogLevel.FATAL]
+            LogLevel["bogus" : LogLevel.CRITICAL]
 
     def test_invalid_stop_raises(self):
         with pytest.raises((ValueError, KeyError)):
@@ -191,7 +191,7 @@ class TestValueConstruction:
 
 class TestComparisons:
     def test_ge_higher(self):
-        assert LogLevel.FATAL >= LogLevel.TRACE
+        assert LogLevel.CRITICAL >= LogLevel.TRACE
 
     def test_ge_equal(self):
         assert LogLevel.INFO >= LogLevel.INFO
@@ -200,7 +200,7 @@ class TestComparisons:
         assert not (LogLevel.DEBUG >= LogLevel.ERROR)
 
     def test_gt_higher(self):
-        assert LogLevel.ERROR > LogLevel.WARN
+        assert LogLevel.ERROR > LogLevel.WARNING
 
     def test_gt_equal_is_false(self):
         assert not (LogLevel.INFO > LogLevel.INFO)
@@ -209,19 +209,19 @@ class TestComparisons:
         assert not (LogLevel.TRACE > LogLevel.DEBUG)
 
     def test_le_lower(self):
-        assert LogLevel.TRACE <= LogLevel.FATAL
+        assert LogLevel.TRACE <= LogLevel.CRITICAL
 
     def test_le_equal(self):
-        assert LogLevel.WARN <= LogLevel.WARN
+        assert LogLevel.WARNING <= LogLevel.WARNING
 
     def test_le_higher_is_false(self):
-        assert not (LogLevel.FATAL <= LogLevel.ERROR)
+        assert not (LogLevel.CRITICAL <= LogLevel.ERROR)
 
     def test_lt_lower(self):
         assert LogLevel.DEBUG < LogLevel.INFO
 
     def test_lt_equal_is_false(self):
-        assert not (LogLevel.WARN < LogLevel.WARN)
+        assert not (LogLevel.WARNING < LogLevel.WARNING)
 
     def test_lt_higher_is_false(self):
         assert not (LogLevel.ERROR < LogLevel.DEBUG)
@@ -294,10 +294,60 @@ class TestSerialization:
 
     def test_json_all_levels(self):
         data = json.dumps(list(ALL_LEVELS))
-        assert data == '["trace", "debug", "info", "warn", "error", "fatal"]'
+        assert data == '["trace", "debug", "info", "warning", "error", "critical"]'
 
     def test_json_roundtrip(self):
-        original = LogLevel.WARN
+        original = LogLevel.WARNING
         serialized = json.dumps({"level": original})
         deserialized = json.loads(serialized)
         assert LogLevel(deserialized["level"]) is original
+
+
+# --- Backward-compatible aliases ---
+
+
+class TestAliases:
+    def test_warn_is_warning(self):
+        assert LogLevel.WARN is LogLevel.WARNING
+
+    def test_fatal_is_critical(self):
+        assert LogLevel.FATAL is LogLevel.CRITICAL
+
+    def test_warn_value_resolves(self):
+        assert LogLevel("warn") is LogLevel.WARNING
+
+    def test_fatal_value_resolves(self):
+        assert LogLevel("fatal") is LogLevel.CRITICAL
+
+    def test_warn_name_access(self):
+        assert LogLevel["WARN"] is LogLevel.WARNING
+
+    def test_fatal_name_access(self):
+        assert LogLevel["FATAL"] is LogLevel.CRITICAL
+
+    def test_aliases_not_in_iteration(self):
+        members = list(LogLevel)
+        assert len(members) == 6
+        assert LogLevel.WARNING in members
+        assert LogLevel.CRITICAL in members
+
+    def test_legacy_slice_with_warn(self):
+        assert LogLevel["trace":"warn"] == [
+            LogLevel.TRACE,
+            LogLevel.DEBUG,
+            LogLevel.INFO,
+            LogLevel.WARNING,
+        ]
+
+    def test_legacy_slice_with_fatal(self):
+        assert LogLevel["info":"fatal"] == [
+            LogLevel.INFO,
+            LogLevel.WARNING,
+            LogLevel.ERROR,
+            LogLevel.CRITICAL,
+        ]
+
+    def test_legacy_json_roundtrip(self):
+        # Old logs serialized as "warn" can still be deserialized
+        assert LogLevel("warn") is LogLevel.WARNING
+        assert LogLevel("fatal") is LogLevel.CRITICAL

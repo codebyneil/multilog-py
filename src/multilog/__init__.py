@@ -14,6 +14,8 @@ Example usage (asynchronous):
     await logger.log("User action", LogLevel.INFO, {"user_id": 123})
 """
 
+import contextlib
+
 from multilog.async_logger import AsyncLogger
 from multilog.exceptions import ConfigError, MultilogError, SinkError
 from multilog.levels import LogLevel
@@ -25,6 +27,9 @@ from multilog.sinks import (
     FileSink,
 )
 
+with contextlib.suppress(ImportError):
+    from multilog.sinks.rich_console import RichConsoleSink
+
 __version__ = "0.1.0"
 
 __all__ = [
@@ -35,6 +40,7 @@ __all__ = [
     "BetterstackSink",
     "ConsoleSink",
     "FileSink",
+    "RichConsoleSink",
     "ConfigError",
     "MultilogError",
     "SinkError",

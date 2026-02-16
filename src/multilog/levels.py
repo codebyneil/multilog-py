@@ -42,29 +42,45 @@ class LogLevel(StrEnum, metaclass=_LogLevelMeta):
     - TRACE: Detailed trace information (1-4)
     - DEBUG: Debugging information (5-8)
     - INFO: Informational messages (9-12)
-    - WARN: Warning conditions (13-16)
+    - WARNING: Warning conditions (13-16)
     - ERROR: Error conditions (17-20)
-    - FATAL: Fatal/critical conditions (21-24)
+    - CRITICAL: Critical/fatal conditions (21-24)
 
     Inherits from str to ensure JSON serialization works properly.
 
     Supports slice syntax for level ranges::
 
-        LogLevel[LogLevel.INFO:LogLevel.FATAL]
-        # => [LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR, LogLevel.FATAL]
+        LogLevel[LogLevel.INFO:LogLevel.CRITICAL]
+        # => [LogLevel.INFO, LogLevel.WARNING, LogLevel.ERROR, LogLevel.CRITICAL]
 
     Comparison operators use severity order (not alphabetical)::
 
-        LogLevel.INFO >= LogLevel.DEBUG   # True
-        LogLevel.INFO < LogLevel.FATAL    # True
+        LogLevel.INFO >= LogLevel.DEBUG    # True
+        LogLevel.INFO < LogLevel.CRITICAL  # True
+
+    ``WARN`` and ``FATAL`` are accepted as aliases for backward compatibility::
+
+        LogLevel.WARN is LogLevel.WARNING   # True
+        LogLevel.FATAL is LogLevel.CRITICAL # True
+        LogLevel("warn") is LogLevel.WARNING  # True (via _missing_)
     """
 
     TRACE = "trace"
     DEBUG = "debug"
     INFO = "info"
-    WARN = "warn"
+    WARNING = "warning"
     ERROR = "error"
-    FATAL = "fatal"
+    CRITICAL = "critical"
+
+    # Backward-compatible aliases
+    WARN = WARNING
+    FATAL = CRITICAL
+
+    @classmethod
+    def _missing_(cls, value):
+        """Resolve legacy level values for backward compatibility."""
+        aliases = {"warn": cls.WARNING, "fatal": cls.CRITICAL}
+        return aliases.get(value)
 
     def __ge__(self, other):
         if isinstance(other, LogLevel):

@@ -4,8 +4,8 @@ import pytest
 
 from multilog._core import _default_sinks
 from multilog.exceptions import ConfigError
+from multilog.sinks.base import BaseSink
 from multilog.sinks.betterstack import BetterstackSink
-from multilog.sinks.console import ConsoleSink
 
 
 class TestDefaultSinks:
@@ -16,7 +16,7 @@ class TestDefaultSinks:
         sinks = _default_sinks()
 
         assert len(sinks) == 1
-        assert isinstance(sinks[0], ConsoleSink)
+        assert isinstance(sinks[0], BaseSink)
 
     def test_both_env_vars_returns_console_and_betterstack(self, monkeypatch):
         monkeypatch.setenv("BETTERSTACK_TOKEN", "test-token")
@@ -25,7 +25,7 @@ class TestDefaultSinks:
         sinks = _default_sinks()
 
         assert len(sinks) == 2
-        assert isinstance(sinks[0], ConsoleSink)
+        assert isinstance(sinks[0], BaseSink)
         assert isinstance(sinks[1], BetterstackSink)
         assert sinks[1].token == "test-token"
         assert sinks[1].ingest_url == "https://in.logs.betterstack.com"

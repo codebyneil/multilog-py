@@ -24,7 +24,7 @@ async def example_basic_usage():
     # Log messages with different levels
     await logger.log("Application started", LogLevel.INFO, {"version": "1.0.0"})
     await logger.log("Debug information", LogLevel.DEBUG, {"module": "auth"})
-    await logger.log("Warning: high memory usage", LogLevel.WARN, {"memory_mb": 1500})
+    await logger.log("Warning: high memory usage", LogLevel.WARNING, {"memory_mb": 1500})
     await logger.log("Error occurred", LogLevel.ERROR, {"error_code": "E500"})
 
     await logger.close()

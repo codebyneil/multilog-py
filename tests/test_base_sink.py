@@ -35,8 +35,8 @@ class TestShouldLog:
 
         assert sink._should_log(LogLevel.TRACE) is False
         assert sink._should_log(LogLevel.DEBUG) is False
-        assert sink._should_log(LogLevel.WARN) is False
-        assert sink._should_log(LogLevel.FATAL) is False
+        assert sink._should_log(LogLevel.WARNING) is False
+        assert sink._should_log(LogLevel.CRITICAL) is False
 
 
 class TestEmitContextMerging:

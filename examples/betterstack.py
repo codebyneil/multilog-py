@@ -16,7 +16,7 @@ logger = Logger(
 
 logger.log("Application started", LogLevel.INFO, {"version": "0.1.0"})
 logger.log("Loading configuration", LogLevel.DEBUG, {"source": "env"})
-logger.log("Disk usage at 90%", LogLevel.WARN, {"disk": "/dev/sda1", "usage_pct": 90})
+logger.log("Disk usage at 90%", LogLevel.WARNING, {"disk": "/dev/sda1", "usage_pct": 90})
 logger.log("Failed to reach database", LogLevel.ERROR, {"host": "db.internal", "timeout_ms": 5000})
 
 logger.log_endpoint(

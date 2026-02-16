@@ -11,7 +11,7 @@ A multi-destination Python logging library with structured logging, per-sink lev
 - **Structured logging** — Every log entry carries a timestamp, level, message, and arbitrary context
 - **HTTP request logging** — Dedicated `log_endpoint()` for capturing method, path, headers, query params, and body
 - **Exception logging** — `log_exception()` captures type, message, and full traceback
-- **Colored console output** — ANSI colors per level, human-readable timestamps, fixed-width columns
+- **Rich console output** — optional [rich](https://github.com/Textualize/rich) integration for styled, colored log output with pretty-printed context
 - **Level ranges** — `LogLevel` supports slice syntax (`LogLevel[LogLevel.INFO:]`) and severity comparisons
 
 ## Installation
@@ -26,6 +26,12 @@ Or with pip:
 pip install multilog-py
 ```
 
+For colored console output with [rich](https://github.com/Textualize/rich):
+
+```bash
+pip install multilog-py[rich]
+```
+
 ## Quick Start
 
 ### Synchronous
@@ -36,7 +42,7 @@ from multilog import Logger, LogLevel
 logger = Logger()  # Console sink by default; add Betterstack via env vars
 
 logger.log("User logged in", LogLevel.INFO, {"user_id": "123"})
-logger.log("Query slow", LogLevel.WARN, {"duration_ms": 1500})
+logger.log("Query slow", LogLevel.WARNING, {"duration_ms": 1500})
 
 logger.close()
 ```
@@ -59,18 +65,29 @@ asyncio.run(main())
 
 ### ConsoleSink
 
-Prints formatted log lines to stdout (or stderr for warn/error/fatal). Output format:
+Prints plain-text log lines to stdout (or stderr for warning/error/critical). Output format:
 
 ```
-2025-06-15 12:34:56.789  INFO   User logged in  {"user_id": "123"}
+2025-06-15 12:34:56.789  INFO      User logged in  {"user_id": "123"}
 ```
 
 ```python
 from multilog import ConsoleSink, LogLevel
 
-ConsoleSink()                                          # all levels, color on
-ConsoleSink(use_color=False)                           # no ANSI codes
-ConsoleSink(included_levels=[LogLevel.ERROR, LogLevel.FATAL])  # errors only
+ConsoleSink()                                              # all levels, plain text
+ConsoleSink(included_levels=[LogLevel.ERROR, LogLevel.CRITICAL])  # errors only
+```
+
+### RichConsoleSink
+
+Styled console output using [rich](https://github.com/Textualize/rich). Auto-selected when rich is installed and no explicit sinks are passed. Uses rich's built-in level colors and pretty-prints context dicts.
+
+```python
+from multilog.sinks.rich_console import RichConsoleSink
+
+RichConsoleSink()                        # styled output with pretty-printed context
+RichConsoleSink(use_color=False)         # structured output without color codes
+RichConsoleSink(pretty_context=False)    # context as JSON instead of pretty repr
 ```
 
 ### BetterstackSink
@@ -131,7 +148,7 @@ logger = Logger(
         BetterstackSink(
             token="...",
             ingest_url="https://...",
-            included_levels=[LogLevel.ERROR, LogLevel.FATAL],     # errors only
+            included_levels=[LogLevel.ERROR, LogLevel.CRITICAL],  # errors only
         ),
     ],
     default_context={"service": "payment-api", "version": "1.0.0"},
@@ -162,35 +179,37 @@ except Exception as exc:
 
 Six levels ordered by severity, based on OpenTelemetry:
 
-| Level   | Value     |
-|---------|-----------|
-| `TRACE` | `"trace"` |
-| `DEBUG` | `"debug"` |
-| `INFO`  | `"info"`  |
-| `WARN`  | `"warn"`  |
-| `ERROR` | `"error"` |
-| `FATAL` | `"fatal"` |
+| Level      | Value        |
+|------------|--------------|
+| `TRACE`    | `"trace"`    |
+| `DEBUG`    | `"debug"`    |
+| `INFO`     | `"info"`     |
+| `WARNING`  | `"warning"`  |
+| `ERROR`    | `"error"`    |
+| `CRITICAL` | `"critical"` |
+
+`WARN` and `FATAL` are accepted as aliases for backward compatibility.
 
 Slice syntax returns inclusive ranges:
 
 ```python
-LogLevel[LogLevel.INFO:]                # [INFO, WARN, ERROR, FATAL]
-LogLevel[:LogLevel.INFO]                # [TRACE, DEBUG, INFO]
-LogLevel[LogLevel.WARN:LogLevel.ERROR]  # [WARN, ERROR]
+LogLevel[LogLevel.INFO:]                      # [INFO, WARNING, ERROR, CRITICAL]
+LogLevel[:LogLevel.INFO]                      # [TRACE, DEBUG, INFO]
+LogLevel[LogLevel.WARNING:LogLevel.ERROR]     # [WARNING, ERROR]
 ```
 
 Severity comparisons work as expected:
 
 ```python
-LogLevel.ERROR > LogLevel.INFO   # True
-LogLevel.DEBUG <= LogLevel.WARN  # True
+LogLevel.ERROR > LogLevel.INFO       # True
+LogLevel.DEBUG <= LogLevel.WARNING   # True
 ```
 
 ## Configuration
 
 ### Environment Variables
 
-When no `sinks` are passed, the logger always creates a `ConsoleSink` and optionally adds a `BetterstackSink` if both env vars are set:
+When no `sinks` are passed, the logger creates a `RichConsoleSink` (if rich is installed) or a `ConsoleSink`, and optionally adds a `BetterstackSink` if both env vars are set:
 
 - `BETTERSTACK_TOKEN` — Betterstack authentication token
 - `BETTERSTACK_INGEST_URL` — Betterstack ingest URL
@@ -214,6 +233,7 @@ async with AsyncLogger() as logger:
 See the [examples/](examples/) directory:
 
 - [console_formatting.py](examples/console_formatting.py) — Console output at every log level
+- [rich_console.py](examples/rich_console.py) — Rich styled output with pretty-printed context
 - [level_filtering.py](examples/level_filtering.py) — Per-sink level filtering
 - [betterstack.py](examples/betterstack.py) — Sending logs to Betterstack
 - [sync_and_async.py](examples/sync_and_async.py) — Sync and async logger usage

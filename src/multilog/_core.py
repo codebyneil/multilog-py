@@ -163,7 +163,12 @@ def _default_sinks() -> list[BaseSink]:
     """Create default sinks from environment variables."""
     sinks: list[BaseSink] = []
 
-    sinks.append(ConsoleSink())
+    try:
+        from multilog.sinks.rich_console import RichConsoleSink
+
+        sinks.append(RichConsoleSink())
+    except ImportError:
+        sinks.append(ConsoleSink())
 
     token = os.getenv("BETTERSTACK_TOKEN")
     ingest_url = os.getenv("BETTERSTACK_INGEST_URL")
