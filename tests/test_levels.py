@@ -6,7 +6,6 @@ import pytest
 
 from multilog.levels import LogLevel
 
-
 ALL_LEVELS = [
     LogLevel.TRACE,
     LogLevel.DEBUG,
@@ -294,7 +293,7 @@ class TestSerialization:
         assert json.dumps({"level": LogLevel.INFO}) == '{"level": "info"}'
 
     def test_json_all_levels(self):
-        data = json.dumps([level for level in ALL_LEVELS])
+        data = json.dumps(list(ALL_LEVELS))
         assert data == '["trace", "debug", "info", "warn", "error", "fatal"]'
 
     def test_json_roundtrip(self):

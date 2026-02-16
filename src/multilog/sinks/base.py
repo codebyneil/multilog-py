@@ -31,10 +31,7 @@ class BaseSink(ABC):
         Args:
             payload: Dictionary containing log data
         """
-        if self.default_context:
-            merged = {**self.default_context, **payload}
-        else:
-            merged = payload
+        merged = {**self.default_context, **payload} if self.default_context else payload
         self._emit(merged)
 
     @abstractmethod

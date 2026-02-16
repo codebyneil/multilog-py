@@ -60,7 +60,7 @@ class ConsoleSink(BaseSink):
         # Determine output stream (stderr for errors/warnings/fatal, stdout otherwise)
         stream = sys.stderr if level in ("error", "warn", "fatal") else sys.stdout
 
-        # Fixed-width level (5 chars, left-aligned to cover "TRACE"/"FATAL"/"DEBUG"/"ERROR"/"WARN"/"INFO")
+        # Fixed-width level (5 chars, left-aligned to cover TRACE/FATAL/DEBUG/ERROR/WARN/INFO)
         level_str = level.upper().ljust(5)
 
         # Format the log line
