@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run ruff:*)",
+      "Bash(uv run:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_FILE\" | grep -qE '.py$'; then uv run ruff check \"$CLAUDE_FILE\" --fix 2>&1 | head -10; fi",
+            "statusMessage": "Running ruff..."
+          },
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_FILE\" | grep -qE '.py$'; then uv run ty check src/ 2>&1 | head -10; fi",
+            "statusMessage": "Running type checker..."
+          },
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_FILE\" | grep -qE 'src/multilog/.*\\.py$'; then uv run python test_logger.py 2>&1 | tail -20; fi",
+            "statusMessage": "Running tests..."
+          }
+        ]
+      }
+    ]
+  }
+}
