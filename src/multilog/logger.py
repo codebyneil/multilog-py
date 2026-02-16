@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
-from multilog._core import _LoggerCore
+from multilog._core import _LoggerCore, _caller_info
 from multilog.levels import LogLevel
 from multilog.sinks.base import BaseSink
 
@@ -53,7 +54,8 @@ class Logger:
             level: Log level
             content: Additional metadata to include
         """
-        self._core.log(message, level, content)
+        frame = sys._getframe(1)
+        self._core.log(message, level, content, _caller_info(frame))
 
     def log_endpoint(
         self,
@@ -77,7 +79,8 @@ class Logger:
             body: Request body
             context: Additional context to include
         """
-        self._core.log_endpoint(endpoint_name, method, path, headers, query_params, body, context)
+        frame = sys._getframe(1)
+        self._core.log_endpoint(endpoint_name, method, path, headers, query_params, body, context, _caller_info(frame))
 
     def log_exception(
         self,
@@ -93,7 +96,8 @@ class Logger:
             exception: The exception object
             context: Additional context to include
         """
-        self._core.log_exception(message, exception, context)
+        frame = sys._getframe(1)
+        self._core.log_exception(message, exception, context, _caller_info(frame))
 
     def close(self) -> None:
         """Close all sinks that support cleanup."""

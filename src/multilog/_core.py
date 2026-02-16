@@ -4,6 +4,7 @@ import os
 import sys
 import traceback as tb
 from datetime import UTC, datetime
+from types import FrameType
 from typing import Any
 
 from multilog.exceptions import ConfigError, ContextError
@@ -34,6 +35,7 @@ class _LoggerCore:
         message: str,
         level: LogLevel,
         content: dict[str, Any] | None = None,
+        caller_info: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Build the log payload dictionary."""
         return {
@@ -41,6 +43,7 @@ class _LoggerCore:
             "message": message,
             "level": level.value,
             **self.default_context,
+            **(caller_info or {}),
             **(content or {}),
         }
 
@@ -49,6 +52,7 @@ class _LoggerCore:
         message: str,
         level: LogLevel,
         content: dict[str, Any] | None = None,
+        caller_info: dict[str, Any] | None = None,
     ) -> None:
         """
         Send a log entry to all configured sinks synchronously.
@@ -57,8 +61,9 @@ class _LoggerCore:
             message: Log message
             level: Log level
             content: Additional metadata to include
+            caller_info: Caller location metadata (file, line, function)
         """
-        payload = self._build_payload(message, level, content)
+        payload = self._build_payload(message, level, content, caller_info)
         self._dispatch(payload)
 
     def _dispatch(self, payload: dict[str, Any]) -> None:
@@ -83,6 +88,7 @@ class _LoggerCore:
         query_params: dict[str, str] | None = None,
         body: Any = None,
         context: dict[str, Any] | None = None,
+        caller_info: dict[str, Any] | None = None,
     ) -> None:
         """
         Log an HTTP endpoint invocation with full request details.
@@ -95,6 +101,7 @@ class _LoggerCore:
             query_params: Query string parameters
             body: Request body
             context: Additional context to include
+            caller_info: Caller location metadata (file, line, function)
         """
         self.log(
             f"Endpoint Invoked: {endpoint_name}",
@@ -112,6 +119,7 @@ class _LoggerCore:
                 },
                 **(context or {}),
             },
+            caller_info=caller_info,
         )
 
     def log_exception(
@@ -119,6 +127,7 @@ class _LoggerCore:
         message: str,
         exception: Exception,
         context: dict[str, Any] | None = None,
+        caller_info: dict[str, Any] | None = None,
     ) -> None:
         """
         Log an exception with full stacktrace and error details.
@@ -127,6 +136,7 @@ class _LoggerCore:
             message: Descriptive message about the error
             exception: The exception object
             context: Additional context to include
+            caller_info: Caller location metadata (file, line, function)
         """
         tb_lines = tb.format_exception(
             type(exception),
@@ -144,6 +154,7 @@ class _LoggerCore:
                 "traceback": tb_lines,
                 **(context or {}),
             },
+            caller_info=caller_info,
         )
 
     def close(self) -> None:
@@ -186,6 +197,15 @@ class _LoggerCore:
     def clear_context(self) -> None:
         """Remove all keys from the logger's default context."""
         self.default_context.clear()
+
+
+def _caller_info(frame: FrameType) -> dict[str, Any]:
+    """Extract caller location metadata from a stack frame."""
+    return {
+        "caller_file": frame.f_code.co_filename,
+        "caller_line": frame.f_lineno,
+        "caller_function": frame.f_code.co_name,
+    }
 
 
 def _default_sinks() -> list[BaseSink]:

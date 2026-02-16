@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from typing import Any
 
-from multilog._core import _LoggerCore
+from multilog._core import _LoggerCore, _caller_info
 from multilog.levels import LogLevel
 from multilog.sinks.base import BaseSink
 
@@ -53,7 +54,8 @@ class AsyncLogger:
             level: Log level
             content: Additional metadata to include
         """
-        await asyncio.to_thread(self._core.log, message, level, content)
+        frame = sys._getframe(1)
+        await asyncio.to_thread(self._core.log, message, level, content, _caller_info(frame))
 
     async def log_endpoint(
         self,
@@ -79,6 +81,7 @@ class AsyncLogger:
             body: Request body
             context: Additional context to include
         """
+        frame = sys._getframe(1)
         await asyncio.to_thread(
             self._core.log_endpoint,
             endpoint_name,
@@ -88,6 +91,7 @@ class AsyncLogger:
             query_params,
             body,
             context,
+            _caller_info(frame),
         )
 
     async def log_exception(
@@ -106,7 +110,8 @@ class AsyncLogger:
             exception: The exception object
             context: Additional context to include
         """
-        await asyncio.to_thread(self._core.log_exception, message, exception, context)
+        frame = sys._getframe(1)
+        await asyncio.to_thread(self._core.log_exception, message, exception, context, _caller_info(frame))
 
     async def close(self) -> None:
         """Close all sinks. Runs in a thread executor."""
