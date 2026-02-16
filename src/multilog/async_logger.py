@@ -1,5 +1,7 @@
 """Async wrapper around _LoggerCore for multilog-py."""
 
+from __future__ import annotations
+
 import asyncio
 from typing import Any
 
