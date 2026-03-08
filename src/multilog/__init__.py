@@ -14,6 +14,8 @@ Example usage (asynchronous):
     await logger.log("User action", LogLevel.INFO, {"user_id": 123})
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
 from multilog.async_logger import AsyncLogger
 from multilog.exceptions import ConfigError, MultilogError, SinkError
 from multilog.levels import LogLevel
@@ -25,7 +27,10 @@ from multilog.sinks import (
     FileSink,
 )
 
-__version__ = "0.1.0"
+try:
+    __version__ = version("multilog")
+except PackageNotFoundError:
+    __version__ = "0.0.0"
 
 __all__ = [
     "Logger",

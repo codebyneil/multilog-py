@@ -1,6 +1,7 @@
 """Log level enumeration for multilog-py."""
 
 from enum import EnumType, StrEnum
+from typing import cast
 
 
 class _LogLevelMeta(EnumType):
@@ -14,24 +15,24 @@ class _LogLevelMeta(EnumType):
         LogLevel[:LogLevel.INFO]                 -> [TRACE, DEBUG, INFO]
     """
 
-    def _resolve_member(cls, key):
+    def _resolve_member(cls, key: "LogLevel | str") -> "LogLevel":
         """Resolve a string or member to a LogLevel member."""
         if isinstance(key, cls):
-            return key
+            return cast("LogLevel", key)
         try:
-            return cls(key)
+            return cast("LogLevel", cls(key))
         except ValueError:
-            return cls._member_map_[key]
+            return cast("LogLevel", cls._member_map_[key])
 
-    def __getitem__(cls, key):
+    def __getitem__(cls, key: str) -> "LogLevel":  # type: ignore[invalid-method-override]
         if isinstance(key, slice):
-            members = list(cls)
+            members = cast('list["LogLevel"]', list(cls))
             start = cls._resolve_member(key.start) if key.start is not None else members[0]
             stop = cls._resolve_member(key.stop) if key.stop is not None else members[-1]
             start_idx = members.index(start)
             stop_idx = members.index(stop)
-            return members[start_idx : stop_idx + 1]
-        return super().__getitem__(key)
+            return cast("LogLevel", members[start_idx : stop_idx + 1])
+        return cast("LogLevel", super().__getitem__(key))
 
 
 class LogLevel(StrEnum, metaclass=_LogLevelMeta):

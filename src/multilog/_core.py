@@ -147,16 +147,15 @@ class _LoggerCore:
         )
 
     def close(self) -> None:
-        """Close all sinks that support cleanup."""
+        """Close all sinks."""
         for sink in self.sinks:
-            if hasattr(sink, "close") and callable(sink.close):
-                try:
-                    sink.close()
-                except Exception as exc:
-                    print(
-                        f"Sink {sink.__class__.__name__} close failed: {exc}",
-                        file=sys.stderr,
-                    )
+            try:
+                sink.close()
+            except Exception as exc:
+                print(
+                    f"Sink {sink.__class__.__name__} close failed: {exc}",
+                    file=sys.stderr,
+                )
 
 
 def _default_sinks() -> list[BaseSink]:

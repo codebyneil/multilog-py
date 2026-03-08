@@ -17,13 +17,13 @@ A multi-destination Python logging library with structured logging, per-sink lev
 ## Installation
 
 ```bash
-uv add multilog-py
+uv add multilog
 ```
 
 Or with pip:
 
 ```bash
-pip install multilog-py
+pip install multilog
 ```
 
 ## Quick Start

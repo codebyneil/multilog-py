@@ -29,10 +29,13 @@ class FileSink(BaseSink):
         """
         super().__init__(default_context=default_context, included_levels=included_levels)
         self.file_path = Path(file_path)
-        self.mode = "a" if append else "w"
 
         # Ensure parent directory exists
         self.file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # append=False means truncate once at startup, then append new entries.
+        if not append:
+            self.file_path.write_text("", encoding="utf-8")
 
     def _emit(self, payload: dict[str, Any]) -> None:
         """
@@ -41,5 +44,5 @@ class FileSink(BaseSink):
         Args:
             payload: Log payload to write
         """
-        with open(self.file_path, mode=self.mode) as f:
+        with self.file_path.open(mode="a", encoding="utf-8") as f:
             f.write(json.dumps(payload) + "\n")

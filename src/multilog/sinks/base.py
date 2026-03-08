@@ -21,8 +21,10 @@ class BaseSink(ABC):
             default_context: Default context merged into all log entries from this sink.
             included_levels: Log levels this sink will emit. Defaults to all levels.
         """
-        self.default_context = default_context or {}
-        self.included_levels = included_levels if included_levels is not None else list(LogLevel)
+        self.default_context = dict(default_context or {})
+        self.included_levels = (
+            list(included_levels) if included_levels is not None else list(LogLevel)
+        )
 
     def emit(self, payload: dict[str, Any]) -> None:
         """
@@ -31,10 +33,7 @@ class BaseSink(ABC):
         Args:
             payload: Dictionary containing log data
         """
-        if self.default_context:
-            merged = {**self.default_context, **payload}
-        else:
-            merged = payload
+        merged = {**self.default_context, **payload} if self.default_context else payload
         self._emit(merged)
 
     @abstractmethod
@@ -51,6 +50,10 @@ class BaseSink(ABC):
             SinkError: If the sink fails to emit the log
         """
         pass
+
+    def close(self) -> None:
+        """Release sink resources. Subclasses can override if needed."""
+        return None
 
     def _should_log(self, log_level: LogLevel) -> bool:
         """
