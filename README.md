@@ -161,7 +161,7 @@ except Exception as exc:
 All other exceptions should also be logged:
 
 - **Fatal** — uncaught exceptions that crash the program
-- **Error** — exceptions that terminate processing for a story or user
+- **Error** — exceptions that terminate processing for the current operation
 - **Warning** — exceptions that are caught and the app can continue running
 
 ## LogLevel
