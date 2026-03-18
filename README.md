@@ -158,6 +158,12 @@ except Exception as exc:
     logger.log_exception("Payment failed", exc, context={"order_id": "12345"})
 ```
 
+All other exceptions should also be logged:
+
+- **Fatal** — uncaught exceptions that crash the program
+- **Error** — exceptions that terminate processing for the current operation
+- **Warning** — exceptions that are caught and the app can continue running
+
 ## LogLevel
 
 Six levels ordered by severity, based on OpenTelemetry:
