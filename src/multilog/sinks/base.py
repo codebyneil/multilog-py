@@ -51,9 +51,8 @@ class BaseSink(ABC):
         """
         pass
 
-    def close(self) -> None:
+    def close(self) -> None:  # noqa: B027 - intentional optional override, not abstract
         """Release sink resources. Subclasses can override if needed."""
-        return None
 
     def _should_log(self, log_level: LogLevel) -> bool:
         """

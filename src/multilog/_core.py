@@ -70,7 +70,7 @@ class _LoggerCore:
                     sink.emit(payload)
             except Exception as exc:
                 print(
-                    f"Sink {sink.__class__.__name__} failed: {exc}",
+                    f"Sink {sink.__class__.__name__} failed: {exc}\n{tb.format_exc()}",
                     file=sys.stderr,
                 )
 
@@ -153,7 +153,7 @@ class _LoggerCore:
                 sink.close()
             except Exception as exc:
                 print(
-                    f"Sink {sink.__class__.__name__} close failed: {exc}",
+                    f"Sink {sink.__class__.__name__} close failed: {exc}\n{tb.format_exc()}",
                     file=sys.stderr,
                 )
 
@@ -169,13 +169,9 @@ def _default_sinks() -> list[BaseSink]:
 
     if token or ingest_url:
         if not token:
-            raise ConfigError(
-                "BETTERSTACK_INGEST_URL is set but BETTERSTACK_TOKEN is missing"
-            )
+            raise ConfigError("BETTERSTACK_INGEST_URL is set but BETTERSTACK_TOKEN is missing")
         if not ingest_url:
-            raise ConfigError(
-                "BETTERSTACK_TOKEN is set but BETTERSTACK_INGEST_URL is missing"
-            )
+            raise ConfigError("BETTERSTACK_TOKEN is set but BETTERSTACK_INGEST_URL is missing")
         sinks.append(BetterstackSink(token=token, ingest_url=ingest_url))
 
     return sinks

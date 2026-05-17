@@ -33,18 +33,8 @@ class BetterstackSink(BaseSink):
         self.token = token
         self.ingest_url = ingest_url
         self.timeout = timeout
-        self._client: httpx.Client | None = None
-
-    def _get_client(self) -> httpx.Client:
-        """
-        Lazy initialize HTTP client.
-
-        Returns:
-            httpx.Client instance
-        """
-        if self._client is None:
-            self._client = httpx.Client(timeout=self.timeout)
-        return self._client
+        self._client = httpx.Client(timeout=timeout)
+        self._closed = False
 
     def _emit(self, payload: dict[str, Any]) -> None:
         """
@@ -53,9 +43,7 @@ class BetterstackSink(BaseSink):
         Args:
             payload: Log payload to send
         """
-        client = self._get_client()
-
-        response = client.post(
+        response = self._client.post(
             self.ingest_url,
             headers={
                 "Authorization": f"Bearer {self.token}",
@@ -67,6 +55,6 @@ class BetterstackSink(BaseSink):
 
     def close(self) -> None:
         """Close the HTTP client."""
-        if self._client:
+        if not self._closed:
             self._client.close()
-            self._client = None
+            self._closed = True

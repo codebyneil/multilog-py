@@ -22,7 +22,7 @@ class _LogLevelMeta(EnumType):
         try:
             return cast("LogLevel", cls(key))
         except ValueError:
-            return cast("LogLevel", cls._member_map_[key])
+            return cast("LogLevel", cls.__members__[key])
 
     def __getitem__(cls, key: str) -> "LogLevel":  # type: ignore[invalid-method-override]
         if isinstance(key, slice):

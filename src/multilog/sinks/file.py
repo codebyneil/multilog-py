@@ -1,9 +1,11 @@
 """File sink for multilog-py."""
 
 import json
+import threading
 from pathlib import Path
 from typing import Any
 
+from multilog.exceptions import SinkError
 from multilog.levels import LogLevel
 from multilog.sinks.base import BaseSink
 
@@ -21,6 +23,11 @@ class FileSink(BaseSink):
         """
         Initialize file sink.
 
+        The file handle is opened once and reused for every emit, guarded by
+        a lock so concurrent threads (e.g. via AsyncLogger) cannot interleave
+        partial JSON lines. The file is opened in line-buffered text mode so
+        each entry is flushed to the OS on its trailing newline.
+
         Args:
             file_path: Path to the log file
             append: Whether to append to existing file (True) or overwrite (False)
@@ -29,13 +36,12 @@ class FileSink(BaseSink):
         """
         super().__init__(default_context=default_context, included_levels=included_levels)
         self.file_path = Path(file_path)
-
-        # Ensure parent directory exists
         self.file_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # append=False means truncate once at startup, then append new entries.
-        if not append:
-            self.file_path.write_text("", encoding="utf-8")
+        mode = "a" if append else "w"
+        self._fh = self.file_path.open(mode=mode, encoding="utf-8", buffering=1)
+        self._lock = threading.Lock()
+        self._closed = False
 
     def _emit(self, payload: dict[str, Any]) -> None:
         """
@@ -44,5 +50,17 @@ class FileSink(BaseSink):
         Args:
             payload: Log payload to write
         """
-        with self.file_path.open(mode="a", encoding="utf-8") as f:
-            f.write(json.dumps(payload) + "\n")
+        line = json.dumps(payload) + "\n"
+        with self._lock:
+            if self._closed:
+                raise SinkError(f"FileSink({self.file_path}) is closed")
+            self._fh.write(line)
+
+    def close(self) -> None:
+        """Flush and close the underlying file handle. Idempotent."""
+        with self._lock:
+            if self._closed:
+                return
+            self._fh.flush()
+            self._fh.close()
+            self._closed = True
