@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+import functools
+from typing import TYPE_CHECKING, Any
 
 from multilog._core import _LoggerCore
 from multilog.levels import LogLevel
 from multilog.sinks.base import BaseSink
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from concurrent.futures import Executor
 
 
 class AsyncLogger:
@@ -15,8 +20,9 @@ class AsyncLogger:
     Asynchronous logger that wraps _LoggerCore.
 
     All logging methods are async and run the synchronous core methods
-    in a thread executor via asyncio.to_thread(), keeping the event loop
-    unblocked during sink I/O (file writes, HTTP requests, etc.).
+    in a thread executor (``asyncio.to_thread()`` by default, or a
+    user-provided ``concurrent.futures.Executor``) so the event loop is
+    not blocked during sink I/O.
 
     Example:
         async with AsyncLogger() as logger:
@@ -27,6 +33,8 @@ class AsyncLogger:
         self,
         sinks: list[BaseSink] | None = None,
         default_context: dict[str, Any] | None = None,
+        included_levels: list[LogLevel] | None = None,
+        executor: Executor | None = None,
     ):
         """
         Initialize the async logger.
@@ -34,8 +42,23 @@ class AsyncLogger:
         Args:
             sinks: List of log sinks. If None, creates sinks from env.
             default_context: Context merged into all log entries.
+            included_levels: If set, log entries whose level is not in this
+                list are dropped before payload construction. Per-sink
+                ``included_levels`` filters still apply on top.
+            executor: Optional executor to run sink I/O on. When ``None``,
+                each call uses ``asyncio.to_thread()`` (the running loop's
+                default executor). Pass a ``ThreadPoolExecutor(max_workers=N)``
+                to cap concurrent sink I/O.
         """
-        self._core = _LoggerCore(sinks, default_context)
+        self._core = _LoggerCore(sinks, default_context, included_levels)
+        self._executor = executor
+
+    async def _run(self, fn: Callable[..., Any], *args: Any) -> Any:
+        """Run ``fn(*args)`` on the configured executor."""
+        if self._executor is None:
+            return await asyncio.to_thread(fn, *args)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._executor, functools.partial(fn, *args))
 
     async def log(
         self,
@@ -53,7 +76,7 @@ class AsyncLogger:
             level: Log level
             context: Additional metadata to include
         """
-        await asyncio.to_thread(self._core.log, message, level, context)
+        await self._run(self._core.log, message, level, context)
 
     async def log_endpoint(
         self,
@@ -79,7 +102,7 @@ class AsyncLogger:
             body: Request body
             context: Additional context to include
         """
-        await asyncio.to_thread(
+        await self._run(
             self._core.log_endpoint,
             endpoint_name,
             method,
@@ -106,11 +129,11 @@ class AsyncLogger:
             exception: The exception object
             context: Additional context to include
         """
-        await asyncio.to_thread(self._core.log_exception, message, exception, context)
+        await self._run(self._core.log_exception, message, exception, context)
 
     async def close(self) -> None:
         """Close all sinks. Runs in a thread executor."""
-        await asyncio.to_thread(self._core.close)
+        await self._run(self._core.close)
 
     async def __aenter__(self) -> AsyncLogger:
         """Enter async context manager."""

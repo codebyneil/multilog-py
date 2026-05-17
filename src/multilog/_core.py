@@ -25,9 +25,13 @@ class _LoggerCore:
         self,
         sinks: list[BaseSink] | None = None,
         default_context: dict[str, Any] | None = None,
+        included_levels: list[LogLevel] | None = None,
     ):
         self.sinks = sinks if sinks is not None else _default_sinks()
         self.default_context = default_context or {}
+        self.included_levels: list[LogLevel] | None = (
+            list(included_levels) if included_levels is not None else None
+        )
 
     def _build_payload(
         self,
@@ -58,6 +62,8 @@ class _LoggerCore:
             level: Log level
             context: Additional metadata to include
         """
+        if self.included_levels is not None and level not in self.included_levels:
+            return
         payload = self._build_payload(message, level, context)
         self._dispatch(payload)
 

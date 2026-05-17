@@ -2,6 +2,7 @@
 
 import asyncio
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import pytest
@@ -79,6 +80,26 @@ class TestRunsOffEventLoop:
         await logger.log("hi", LogLevel.INFO)
 
         assert sink.threads[0] != threading.get_ident()
+
+
+class TestCustomExecutor:
+    async def test_emits_run_on_provided_executor(self):
+        sink = _ThreadCapturingSink()
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="multilog-test") as executor:
+            executor_thread_ids: set[int] = set()
+
+            def _capture():
+                executor_thread_ids.add(threading.get_ident())
+
+            # Prime: identify which thread id belongs to our single-worker executor.
+            executor.submit(_capture).result()
+
+            logger = AsyncLogger(sinks=[sink], executor=executor)
+            await logger.log("a", LogLevel.INFO)
+            await logger.log("b", LogLevel.INFO)
+
+        assert len(sink.threads) == 2
+        assert set(sink.threads) <= executor_thread_ids
 
 
 class TestConcurrentEmits:

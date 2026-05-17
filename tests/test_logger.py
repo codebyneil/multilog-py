@@ -73,6 +73,57 @@ class TestPerSinkLevelFiltering:
         assert [p["message"] for p in everything.payloads] == ["info-msg", "err-msg"]
 
 
+class TestLoggerLevelGate:
+    def test_logger_gate_blocks_before_dispatch(self):
+        sink = RecordingSink()
+        logger = Logger(
+            sinks=[sink],
+            included_levels=LogLevel[LogLevel.WARN :],  # WARN, ERROR, FATAL
+        )
+
+        logger.log("info-dropped", LogLevel.INFO)
+        logger.log("warn-kept", LogLevel.WARN)
+        logger.log("fatal-kept", LogLevel.FATAL)
+
+        assert [p["message"] for p in sink.payloads] == ["warn-kept", "fatal-kept"]
+
+    def test_logger_gate_short_circuits_no_payload_built(self):
+        """When the gate rejects, _emit is never reached even if the sink would accept it."""
+
+        class BoomOnEmit(RecordingSink):
+            def _emit(self, payload):
+                raise RuntimeError("must not be called")
+
+        sink = BoomOnEmit()
+        logger = Logger(
+            sinks=[sink],
+            included_levels=[LogLevel.ERROR],
+        )
+
+        # Should not raise — the gate drops the entry before _emit.
+        logger.log("dropped", LogLevel.INFO)
+        logger.log("dropped", LogLevel.DEBUG)
+
+    def test_logger_gate_none_means_all_levels(self):
+        sink = RecordingSink()
+        logger = Logger(sinks=[sink], included_levels=None)
+
+        for level in LogLevel:
+            logger.log("x", level)
+
+        assert len(sink.payloads) == len(list(LogLevel))
+
+    def test_logger_gate_stacks_with_sink_gate(self):
+        # Logger admits >= WARN; sink admits only ERROR. Intersection is {ERROR}.
+        sink = RecordingSink(included_levels=[LogLevel.ERROR])
+        logger = Logger(sinks=[sink], included_levels=LogLevel[LogLevel.WARN :])
+
+        for level in LogLevel:
+            logger.log(level.value, level)
+
+        assert [p["message"] for p in sink.payloads] == ["error"]
+
+
 class TestDispatchIsolation:
     def test_one_failing_sink_does_not_break_others(self, capsys):
         good = RecordingSink()

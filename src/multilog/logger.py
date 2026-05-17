@@ -29,6 +29,7 @@ class Logger:
         self,
         sinks: list[BaseSink] | None = None,
         default_context: dict[str, Any] | None = None,
+        included_levels: list[LogLevel] | None = None,
     ):
         """
         Initialize logger.
@@ -36,8 +37,11 @@ class Logger:
         Args:
             sinks: List of log sinks. If None, creates sinks from env.
             default_context: Context merged into all log entries.
+            included_levels: If set, log entries whose level is not in this
+                list are dropped before payload construction. Per-sink
+                ``included_levels`` filters still apply on top.
         """
-        self._core = _LoggerCore(sinks, default_context)
+        self._core = _LoggerCore(sinks, default_context, included_levels)
 
     def log(
         self,

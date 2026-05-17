@@ -75,7 +75,9 @@ ConsoleSink(included_levels=[LogLevel.ERROR, LogLevel.FATAL])  # errors only
 
 ### BetterstackSink
 
-Sends each log entry as an HTTP POST to Betterstack.
+Sends each log entry as an HTTP POST to Betterstack. Transient failures
+(transport errors, timeouts, HTTP 408/429, 5xx) are retried with
+full-jitter exponential backoff; other 4xx responses fail fast.
 
 ```python
 from multilog import BetterstackSink
@@ -83,7 +85,10 @@ from multilog import BetterstackSink
 BetterstackSink(
     token="your-betterstack-token",
     ingest_url="https://s12345.eu-nbg-2.betterstackdata.com",
-    timeout=10.0,  # optional, default 10s
+    timeout=10.0,       # optional, default 10s
+    max_retries=3,      # optional, default 3
+    backoff_base=0.5,   # optional, default 0.5s
+    backoff_max=8.0,    # optional, default 8.0s
 )
 ```
 
@@ -135,7 +140,23 @@ logger = Logger(
         ),
     ],
     default_context={"service": "payment-api", "version": "1.0.0"},
+    included_levels=LogLevel[LogLevel.DEBUG:],  # drop TRACE for ALL sinks, before payload build
 )
+```
+
+Both `Logger` and `AsyncLogger` accept a top-level `included_levels`
+that short-circuits before payload construction. Per-sink
+`included_levels` still apply on top — both filters must accept the
+level for a sink to receive the entry.
+
+`AsyncLogger` additionally accepts an `executor` argument
+(`concurrent.futures.Executor`) to cap concurrent sink I/O:
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+from multilog import AsyncLogger
+
+logger = AsyncLogger(executor=ThreadPoolExecutor(max_workers=4))
 ```
 
 ## Endpoint and Exception Logging
