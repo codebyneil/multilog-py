@@ -43,7 +43,7 @@ class Logger:
         self,
         message: str,
         level: LogLevel,
-        content: dict[str, Any] | None = None,
+        context: dict[str, Any] | None = None,
     ) -> None:
         """
         Send a log entry to all configured sinks.
@@ -51,9 +51,9 @@ class Logger:
         Args:
             message: Log message
             level: Log level
-            content: Additional metadata to include
+            context: Additional metadata to include
         """
-        self._core.log(message, level, content)
+        self._core.log(message, level, context)
 
     def log_endpoint(
         self,

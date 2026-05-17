@@ -41,7 +41,7 @@ class AsyncLogger:
         self,
         message: str,
         level: LogLevel,
-        content: dict[str, Any] | None = None,
+        context: dict[str, Any] | None = None,
     ) -> None:
         """
         Send a log entry to all configured sinks.
@@ -51,9 +51,9 @@ class AsyncLogger:
         Args:
             message: Log message
             level: Log level
-            content: Additional metadata to include
+            context: Additional metadata to include
         """
-        await asyncio.to_thread(self._core.log, message, level, content)
+        await asyncio.to_thread(self._core.log, message, level, context)
 
     async def log_endpoint(
         self,

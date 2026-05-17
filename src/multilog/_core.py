@@ -33,7 +33,7 @@ class _LoggerCore:
         self,
         message: str,
         level: LogLevel,
-        content: dict[str, Any] | None = None,
+        context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Build the log payload dictionary."""
         return {
@@ -41,14 +41,14 @@ class _LoggerCore:
             "message": message,
             "level": level.value,
             **self.default_context,
-            **(content or {}),
+            **(context or {}),
         }
 
     def log(
         self,
         message: str,
         level: LogLevel,
-        content: dict[str, Any] | None = None,
+        context: dict[str, Any] | None = None,
     ) -> None:
         """
         Send a log entry to all configured sinks synchronously.
@@ -56,9 +56,9 @@ class _LoggerCore:
         Args:
             message: Log message
             level: Log level
-            content: Additional metadata to include
+            context: Additional metadata to include
         """
-        payload = self._build_payload(message, level, content)
+        payload = self._build_payload(message, level, context)
         self._dispatch(payload)
 
     def _dispatch(self, payload: dict[str, Any]) -> None:

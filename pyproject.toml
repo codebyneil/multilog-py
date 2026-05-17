@@ -1,6 +1,6 @@
 [project]
 name = "multilog"
-version = "0.1.0"
+version = "0.2.0"
 description = "Multi-destination logging library with Betterstack integration"
 readme = "README.md"
 authors = [
