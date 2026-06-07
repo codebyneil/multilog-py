@@ -1,43 +1,15 @@
-"""Test all OpenTelemetry log levels."""
+"""Per-sink threshold (min_level) and explicit allow-set (only)."""
 
-import asyncio
-from multilog import AsyncLogger, LogLevel, ConsoleSink
+from multilog import ConsoleSink, LogLevel, configure, get_logger
 
+log = get_logger()
 
-async def main():
-    """Test all log levels."""
-    print("=" * 60)
-    print("Testing all OpenTelemetry log levels")
-    print("=" * 60)
+print("--- min_level=WARN: only WARN and above print ---")
+configure(sinks=[ConsoleSink(min_level=LogLevel.WARN)])
+for level in LogLevel:
+    log.log(f"{level.value} message", level)
 
-    logger = AsyncLogger(sinks=[ConsoleSink()])
-
-    # Test all log levels
-    await logger.log("Trace message - very detailed", LogLevel.TRACE, {"trace_id": "abc123"})
-    await logger.log("Debug message - debugging info", LogLevel.DEBUG, {"debug_var": "value"})
-    await logger.log("Info message - general information", LogLevel.INFO, {"user_id": "123"})
-    await logger.log("Warning message - something to watch", LogLevel.WARN, {"memory_usage": "high"})
-    await logger.log("Error message - something went wrong", LogLevel.ERROR, {"error_code": "E500"})
-    await logger.log("Fatal message - critical failure", LogLevel.FATAL, {"system": "database", "status": "crashed"})
-
-    await logger.close()
-
-    print("\n" + "=" * 60)
-    print("Testing log level filtering (INFO and above)")
-    print("=" * 60)
-
-    # Test filtering - only INFO and above
-    logger = AsyncLogger(sinks=[ConsoleSink(included_levels=LogLevel[LogLevel.INFO:])])
-
-    await logger.log("This TRACE won't show", LogLevel.TRACE)
-    await logger.log("This DEBUG won't show", LogLevel.DEBUG)
-    await logger.log("This INFO will show", LogLevel.INFO)
-    await logger.log("This WARN will show", LogLevel.WARN)
-    await logger.log("This ERROR will show", LogLevel.ERROR)
-    await logger.log("This FATAL will show", LogLevel.FATAL)
-
-    await logger.close()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+print("--- only={INFO, ERROR}: exactly those two, ignoring threshold ---")
+configure(sinks=[ConsoleSink(only={LogLevel.INFO, LogLevel.ERROR})])
+for level in LogLevel:
+    log.log(f"{level.value} message", level)

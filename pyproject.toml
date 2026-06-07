@@ -1,6 +1,6 @@
 [project]
 name = "multilog"
-version = "0.2.0"
+version = "1.0.0"
 description = "Multi-destination logging library with Betterstack integration"
 readme = "README.md"
 license = { text = "MIT" }
@@ -38,6 +38,7 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.9.0",
     "ty",
+    "hypothesis>=6.155.2",
 ]
 
 [build-system]

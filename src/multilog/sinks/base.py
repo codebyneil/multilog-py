@@ -1,67 +1,71 @@
 """Base sink interface for multilog-py."""
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from typing import Any
 
 from multilog.levels import LogLevel
 
 
 class BaseSink(ABC):
-    """Abstract base class for log sinks."""
+    """Abstract base class for log sinks.
+
+    Filtering is threshold-based: a sink emits every entry whose level is at
+    least ``min_level``. The optional ``only`` set is an escape hatch for the
+    rare case where you want an explicit allow-list instead of a threshold —
+    when ``only`` is provided it is authoritative and ``min_level`` is ignored.
+    """
 
     def __init__(
         self,
-        default_context: dict[str, Any] | None = None,
-        included_levels: list[LogLevel] | None = None,
+        *,
+        min_level: LogLevel = LogLevel.TRACE,
+        only: Iterable[LogLevel] | None = None,
     ):
-        """
-        Initialize the sink.
+        """Initialize the sink.
 
         Args:
-            default_context: Default context merged into all log entries from this sink.
-            included_levels: Log levels this sink will emit. Defaults to all levels.
+            min_level: Emit entries at this severity or higher. Defaults to
+                ``TRACE`` (emit everything).
+            only: If given, an explicit set of levels to emit. Overrides
+                ``min_level`` entirely.
         """
-        self.default_context = dict(default_context or {})
-        self.included_levels = (
-            list(included_levels) if included_levels is not None else list(LogLevel)
-        )
+        self.min_level = min_level
+        self.only: frozenset[LogLevel] | None = frozenset(only) if only is not None else None
 
     def emit(self, payload: dict[str, Any]) -> None:
-        """
-        Merge sink default_context into the payload and delegate to _emit.
+        """Send a log entry to the destination.
+
+        The default implementation delegates straight to :meth:`_emit`; the
+        dispatcher has already filtered by level. Treat ``payload`` as
+        read-only — it is shared across all sinks for a single log call.
 
         Args:
-            payload: Dictionary containing log data
+            payload: Dictionary containing log data.
         """
-        merged = {**self.default_context, **payload} if self.default_context else payload
-        self._emit(merged)
+        self._emit(payload)
 
     @abstractmethod
     def _emit(self, payload: dict[str, Any]) -> None:
-        """
-        Send a log entry to the destination.
+        """Send a log entry to the destination.
 
-        Must be implemented by subclasses.
+        Must be implemented by subclasses. Runs synchronously, possibly on a
+        worker thread (``AsyncLogger`` dispatches via a thread).
 
         Args:
-            payload: Dictionary containing log data (with sink context already merged)
+            payload: Dictionary containing log data.
 
         Raises:
-            SinkError: If the sink fails to emit the log
+            SinkError: If the sink fails to emit the log. The dispatcher
+                isolates and reports failures; an exception here never reaches
+                the caller of ``log()``.
         """
-        pass
 
     def close(self) -> None:  # noqa: B027 - intentional optional override, not abstract
         """Release sink resources. Subclasses can override if needed."""
 
-    def _should_log(self, log_level: LogLevel) -> bool:
-        """
-        Check if this log level should be emitted.
-
-        Args:
-            log_level: The log level to check
-
-        Returns:
-            True if the log level is in included_levels, False otherwise
-        """
-        return log_level in self.included_levels
+    def _accepts(self, level: LogLevel) -> bool:
+        """Return whether this sink should emit an entry at ``level``."""
+        if self.only is not None:
+            return level in self.only
+        return level >= self.min_level

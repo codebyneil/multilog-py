@@ -4,16 +4,14 @@
 class MultilogError(Exception):
     """Base exception class for all multilog-py errors."""
 
-    pass
-
-
-class ConfigError(MultilogError):
-    """Raised when logger configuration is invalid or incomplete."""
-
-    pass
-
 
 class SinkError(MultilogError):
     """Raised when a sink fails to emit a log entry."""
 
-    pass
+
+class QueueFull(MultilogError):  # noqa: N818 - mirrors stdlib queue.Full, not an *Error
+    """A batching sink dropped an event because its queue was full.
+
+    Passed to a sink's ``on_error`` callback when its ``overflow_policy`` is
+    ``OverflowPolicy.DROP`` and the in-memory queue has no room for a new event.
+    """

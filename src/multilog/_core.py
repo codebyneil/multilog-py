@@ -1,183 +1,162 @@
-"""Shared synchronous core logic for multilog-py loggers."""
+"""Shared state and dispatch primitives for multilog-py loggers.
 
-import os
+A :class:`_LoggerState` holds the mutable, thread-safe state for a single named
+logger: its sinks and its base context. The synchronous ``Logger`` and the
+``AsyncLogger`` for a given name share one ``_LoggerState`` instance, which is
+how ``configure()`` can reconfigure a live logger in place without ever
+replacing the handle the caller is holding.
+
+Dispatch is implemented as free functions that operate on a snapshot of the
+state, so a log call never holds the state lock while doing sink I/O.
+"""
+
+from __future__ import annotations
+
 import sys
-import traceback as tb
-from datetime import UTC, datetime
-from typing import Any
+import threading
+import time
+import traceback
+from typing import TYPE_CHECKING, Any
 
-from multilog.exceptions import ConfigError
 from multilog.levels import LogLevel
-from multilog.sinks.base import BaseSink
-from multilog.sinks.betterstack import BetterstackSink
-from multilog.sinks.console import ConsoleSink
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from multilog.sinks.base import BaseSink
 
 
-class _LoggerCore:
-    """
-    Pure synchronous core containing shared logging logic.
-
-    Both the synchronous Logger and AsyncLogger delegate to this class
-    for payload construction and sink dispatch.
-    """
+class _LoggerState:
+    """Thread-safe mutable state shared by a logger's sync and async views."""
 
     def __init__(
         self,
-        sinks: list[BaseSink] | None = None,
-        default_context: dict[str, Any] | None = None,
-        included_levels: list[LogLevel] | None = None,
+        name: str,
+        sinks: Iterable[BaseSink] | None = None,
+        context: dict[str, Any] | None = None,
     ):
-        self.sinks = sinks if sinks is not None else _default_sinks()
-        self.default_context = default_context or {}
-        self.included_levels: list[LogLevel] | None = (
-            list(included_levels) if included_levels is not None else None
+        self.name = name
+        self._sinks: tuple[BaseSink, ...] = tuple(sinks) if sinks is not None else ()
+        self._context: dict[str, Any] = dict(context) if context else {}
+        self._lock = threading.Lock()
+
+    @property
+    def sinks(self) -> tuple[BaseSink, ...]:
+        """An immutable snapshot of the current sinks, safe to iterate."""
+        return self._sinks
+
+    @property
+    def context(self) -> dict[str, Any]:
+        """The current base context. Treat as read-only; it is replaced, not mutated."""
+        return self._context
+
+    def set_context(self, context: dict[str, Any] | None) -> None:
+        with self._lock:
+            self._context = dict(context) if context else {}
+
+    def set_sinks(self, sinks: Iterable[BaseSink], *, close_removed: bool = True) -> None:
+        """Replace the sink set. Sinks no longer present are closed by default.
+
+        The state lock is released before closing removed sinks, so a slow
+        ``close()`` (e.g. a batching sink draining its queue) never blocks
+        concurrent log dispatch, and an ``on_error`` callback that logs cannot
+        deadlock against this mutation.
+        """
+        new = tuple(sinks)
+        with self._lock:
+            old = self._sinks
+            self._sinks = new
+        if close_removed:
+            for sink in old:
+                if sink not in new:
+                    _safe_close(sink)
+
+    def add_sink(self, sink: BaseSink) -> None:
+        with self._lock:
+            if sink not in self._sinks:
+                self._sinks = (*self._sinks, sink)
+
+    def remove_sink(self, sink: BaseSink, *, close: bool = True) -> None:
+        with self._lock:
+            if sink not in self._sinks:
+                return
+            self._sinks = tuple(s for s in self._sinks if s is not sink)
+        if close:
+            _safe_close(sink)
+
+    def close_all(self) -> None:
+        with self._lock:
+            sinks = self._sinks
+        for sink in sinks:
+            _safe_close(sink)
+
+
+def _now_ms() -> int:
+    return time.time_ns() // 1_000_000
+
+
+def _build_payload(
+    base_context: dict[str, Any],
+    bound_context: dict[str, Any],
+    message: str,
+    level: LogLevel,
+    call_context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Compose a log payload.
+
+    Context precedence (later wins): base context -> bound context -> per-call
+    context. The standard fields (``timestamp_ms``, ``level``, ``message``) are
+    written last and therefore cannot be shadowed by user context.
+    """
+    payload: dict[str, Any] = dict(base_context)
+    if bound_context:
+        payload.update(bound_context)
+    if call_context:
+        payload.update(call_context)
+    payload["timestamp_ms"] = _now_ms()
+    payload["level"] = level
+    payload["message"] = message
+    return payload
+
+
+def _dispatch(sinks: tuple[BaseSink, ...], payload: dict[str, Any], level: LogLevel) -> None:
+    """Send a payload to every sink that accepts ``level``. Never raises.
+
+    A failure in one sink is isolated and reported to stderr; remaining sinks
+    still receive the entry, and the caller of ``log()`` never sees the error.
+    """
+    for sink in sinks:
+        try:
+            if sink._accepts(level):
+                sink.emit(payload)
+        except Exception:
+            print(
+                f"multilog: sink {type(sink).__name__} failed to emit\n{traceback.format_exc()}",
+                file=sys.stderr,
+            )
+
+
+def _exception_context(exception: BaseException) -> dict[str, Any]:
+    """Build the context fields describing an exception and its traceback."""
+    tb_lines = traceback.format_exception(
+        type(exception),
+        exception,
+        exception.__traceback__,
+    )
+    return {
+        "event_type": "exception",
+        "exception_type": type(exception).__name__,
+        "exception_message": str(exception),
+        "traceback": tb_lines,
+    }
+
+
+def _safe_close(sink: BaseSink) -> None:
+    """Close a sink, isolating and reporting any failure. Never raises."""
+    try:
+        sink.close()
+    except Exception:
+        print(
+            f"multilog: sink {type(sink).__name__} failed to close\n{traceback.format_exc()}",
+            file=sys.stderr,
         )
-
-    def _build_payload(
-        self,
-        message: str,
-        level: LogLevel,
-        context: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        """Build the log payload dictionary."""
-        return {
-            "timestamp_ms": int(datetime.now(UTC).timestamp() * 1000),
-            "message": message,
-            "level": level.value,
-            **self.default_context,
-            **(context or {}),
-        }
-
-    def log(
-        self,
-        message: str,
-        level: LogLevel,
-        context: dict[str, Any] | None = None,
-    ) -> None:
-        """
-        Send a log entry to all configured sinks synchronously.
-
-        Args:
-            message: Log message
-            level: Log level
-            context: Additional metadata to include
-        """
-        if self.included_levels is not None and level not in self.included_levels:
-            return
-        payload = self._build_payload(message, level, context)
-        self._dispatch(payload)
-
-    def _dispatch(self, payload: dict[str, Any]) -> None:
-        """Dispatch payload to all sinks sequentially with error handling."""
-        for sink in self.sinks:
-            try:
-                log_level = LogLevel(payload.get("level", "info"))
-                if sink._should_log(log_level):
-                    sink.emit(payload)
-            except Exception as exc:
-                print(
-                    f"Sink {sink.__class__.__name__} failed: {exc}\n{tb.format_exc()}",
-                    file=sys.stderr,
-                )
-
-    def log_endpoint(
-        self,
-        endpoint_name: str,
-        method: str,
-        path: str,
-        headers: dict[str, str],
-        query_params: dict[str, str] | None = None,
-        body: Any = None,
-        context: dict[str, Any] | None = None,
-    ) -> None:
-        """
-        Log an HTTP endpoint invocation with full request details.
-
-        Args:
-            endpoint_name: Name/identifier for the endpoint
-            method: HTTP method (GET, POST, etc.)
-            path: URL path
-            headers: Request headers
-            query_params: Query string parameters
-            body: Request body
-            context: Additional context to include
-        """
-        self.log(
-            f"Endpoint Invoked: {endpoint_name}",
-            LogLevel.INFO,
-            {
-                "event_source": "http_endpoint",
-                "event_type": "endpoint_invocation",
-                "endpoint_name": endpoint_name,
-                "request": {
-                    "method": method,
-                    "path": path,
-                    "query": query_params or {},
-                    "headers": headers,
-                    "body": body,
-                },
-                **(context or {}),
-            },
-        )
-
-    def log_exception(
-        self,
-        message: str,
-        exception: Exception,
-        context: dict[str, Any] | None = None,
-    ) -> None:
-        """
-        Log an exception with full stacktrace and error details.
-
-        Args:
-            message: Descriptive message about the error
-            exception: The exception object
-            context: Additional context to include
-        """
-        tb_lines = tb.format_exception(
-            type(exception),
-            exception,
-            exception.__traceback__,
-        )
-
-        self.log(
-            message,
-            LogLevel.ERROR,
-            {
-                "event_type": "exception",
-                "exception_type": type(exception).__name__,
-                "exception_message": str(exception),
-                "traceback": tb_lines,
-                **(context or {}),
-            },
-        )
-
-    def close(self) -> None:
-        """Close all sinks."""
-        for sink in self.sinks:
-            try:
-                sink.close()
-            except Exception as exc:
-                print(
-                    f"Sink {sink.__class__.__name__} close failed: {exc}\n{tb.format_exc()}",
-                    file=sys.stderr,
-                )
-
-
-def _default_sinks() -> list[BaseSink]:
-    """Create default sinks from environment variables."""
-    sinks: list[BaseSink] = []
-
-    sinks.append(ConsoleSink())
-
-    token = os.getenv("BETTERSTACK_TOKEN")
-    ingest_url = os.getenv("BETTERSTACK_INGEST_URL")
-
-    if token or ingest_url:
-        if not token:
-            raise ConfigError("BETTERSTACK_INGEST_URL is set but BETTERSTACK_TOKEN is missing")
-        if not ingest_url:
-            raise ConfigError("BETTERSTACK_TOKEN is set but BETTERSTACK_INGEST_URL is missing")
-        sinks.append(BetterstackSink(token=token, ingest_url=ingest_url))
-
-    return sinks

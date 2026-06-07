@@ -1,8 +1,7 @@
-"""Tests for the AsyncLogger wrapper."""
+"""Tests for the AsyncLogger."""
 
 import asyncio
 import threading
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import pytest
@@ -43,20 +42,14 @@ class TestAsyncDispatch:
 
         assert sink.payloads[0]["user_id"] == 7
 
-    async def test_log_endpoint_dispatches(self):
-        sink = RecordingSink()
+    async def test_min_level_filter_applies(self):
+        sink = RecordingSink(min_level=LogLevel.WARN)
         logger = AsyncLogger(sinks=[sink])
 
-        await logger.log_endpoint(
-            endpoint_name="x",
-            method="GET",
-            path="/y",
-            headers={"H": "v"},
-        )
+        await logger.log("dropped", LogLevel.INFO)
+        await logger.log("kept", LogLevel.ERROR)
 
-        payload = sink.payloads[0]
-        assert payload["endpoint_name"] == "x"
-        assert payload["request"]["method"] == "GET"
+        assert [p["message"] for p in sink.payloads] == ["kept"]
 
     async def test_log_exception_dispatches(self):
         sink = RecordingSink()
@@ -70,6 +63,15 @@ class TestAsyncDispatch:
         payload = sink.payloads[0]
         assert payload["exception_type"] == "ValueError"
         assert payload["exception_message"] == "boom"
+        assert payload["level"] == LogLevel.ERROR
+
+    async def test_log_exception_custom_level(self):
+        sink = RecordingSink()
+        logger = AsyncLogger(sinks=[sink])
+
+        await logger.log_exception("warn-level", RuntimeError("x"), level=LogLevel.WARN)
+
+        assert sink.payloads[0]["level"] == LogLevel.WARN
 
 
 class TestRunsOffEventLoop:
@@ -82,24 +84,14 @@ class TestRunsOffEventLoop:
         assert sink.threads[0] != threading.get_ident()
 
 
-class TestCustomExecutor:
-    async def test_emits_run_on_provided_executor(self):
-        sink = _ThreadCapturingSink()
-        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="multilog-test") as executor:
-            executor_thread_ids: set[int] = set()
+class TestBind:
+    async def test_bound_async_logger_merges_context(self):
+        sink = RecordingSink()
+        logger = AsyncLogger(sinks=[sink]).bind(request_id="abc")
 
-            def _capture():
-                executor_thread_ids.add(threading.get_ident())
+        await logger.log("hi", LogLevel.INFO)
 
-            # Prime: identify which thread id belongs to our single-worker executor.
-            executor.submit(_capture).result()
-
-            logger = AsyncLogger(sinks=[sink], executor=executor)
-            await logger.log("a", LogLevel.INFO)
-            await logger.log("b", LogLevel.INFO)
-
-        assert len(sink.threads) == 2
-        assert set(sink.threads) <= executor_thread_ids
+        assert sink.payloads[0]["request_id"] == "abc"
 
 
 class TestConcurrentEmits:
@@ -124,7 +116,7 @@ class TestDispatchIsolation:
         await logger.log("hi", LogLevel.INFO)
 
         assert len(good.payloads) == 1
-        assert "RaisingSink failed" in capsys.readouterr().err
+        assert "RaisingSink failed to emit" in capsys.readouterr().err
 
 
 class TestCloseAndContextManager:

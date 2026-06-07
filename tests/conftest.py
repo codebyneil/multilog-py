@@ -2,7 +2,22 @@
 
 from typing import Any
 
+import pytest
+
+from multilog._registry import _reset_registry_for_testing
 from multilog.sinks.base import BaseSink
+
+
+@pytest.fixture(autouse=True)
+def _clean_registry():
+    """Reset the process-wide registry around every test.
+
+    The registry is global, so without this fixture loggers and sinks
+    configured in one test would leak into the next.
+    """
+    _reset_registry_for_testing()
+    yield
+    _reset_registry_for_testing()
 
 
 class RecordingSink(BaseSink):

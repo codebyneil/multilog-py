@@ -1,4 +1,4 @@
-"""Tests for BaseSink: level filtering and context merging."""
+"""Tests for BaseSink: threshold and explicit-set level filtering."""
 
 from typing import Any
 
@@ -17,52 +17,53 @@ class _ConcreteSink(BaseSink):
         self.payloads.append(payload)
 
 
-class TestShouldLog:
+class TestAcceptsThreshold:
     def test_default_accepts_all_levels(self):
         sink = _ConcreteSink()
-
         for level in LogLevel:
-            assert sink._should_log(level) is True
+            assert sink._accepts(level) is True
 
-    def test_custom_included_levels_accepts_listed(self):
-        sink = _ConcreteSink(included_levels=[LogLevel.INFO, LogLevel.ERROR])
+    def test_min_level_accepts_at_or_above(self):
+        sink = _ConcreteSink(min_level=LogLevel.WARN)
+        assert sink._accepts(LogLevel.WARN) is True
+        assert sink._accepts(LogLevel.ERROR) is True
+        assert sink._accepts(LogLevel.FATAL) is True
 
-        assert sink._should_log(LogLevel.INFO) is True
-        assert sink._should_log(LogLevel.ERROR) is True
-
-    def test_custom_included_levels_rejects_unlisted(self):
-        sink = _ConcreteSink(included_levels=[LogLevel.INFO, LogLevel.ERROR])
-
-        assert sink._should_log(LogLevel.TRACE) is False
-        assert sink._should_log(LogLevel.DEBUG) is False
-        assert sink._should_log(LogLevel.WARN) is False
-        assert sink._should_log(LogLevel.FATAL) is False
+    def test_min_level_rejects_below(self):
+        sink = _ConcreteSink(min_level=LogLevel.WARN)
+        assert sink._accepts(LogLevel.TRACE) is False
+        assert sink._accepts(LogLevel.DEBUG) is False
+        assert sink._accepts(LogLevel.INFO) is False
 
 
-class TestEmitContextMerging:
-    def test_default_context_merged_into_payload(self):
-        sink = _ConcreteSink(default_context={"env": "test"})
+class TestAcceptsOnly:
+    def test_only_accepts_listed(self):
+        sink = _ConcreteSink(only={LogLevel.INFO, LogLevel.ERROR})
+        assert sink._accepts(LogLevel.INFO) is True
+        assert sink._accepts(LogLevel.ERROR) is True
 
-        sink.emit({"message": "hello", "level": "info"})
+    def test_only_rejects_unlisted(self):
+        sink = _ConcreteSink(only={LogLevel.INFO, LogLevel.ERROR})
+        assert sink._accepts(LogLevel.TRACE) is False
+        assert sink._accepts(LogLevel.WARN) is False
+        assert sink._accepts(LogLevel.FATAL) is False
 
-        payload = sink.payloads[0]
-        assert payload["env"] == "test"
-        assert payload["message"] == "hello"
-        assert payload["level"] == "info"
+    def test_only_overrides_min_level(self):
+        # min_level would admit FATAL, but only restricts to INFO.
+        sink = _ConcreteSink(min_level=LogLevel.FATAL, only={LogLevel.INFO})
+        assert sink._accepts(LogLevel.INFO) is True
+        assert sink._accepts(LogLevel.FATAL) is False
 
-    def test_payload_keys_override_default_context(self):
-        sink = _ConcreteSink(default_context={"env": "test", "source": "default"})
 
-        sink.emit({"message": "hello", "source": "override"})
-
-        payload = sink.payloads[0]
-        assert payload["source"] == "override"
-        assert payload["env"] == "test"
-
-    def test_no_default_context_passes_through_unchanged(self):
+class TestEmit:
+    def test_emit_passes_payload_through_to_emit(self):
         sink = _ConcreteSink()
         original = {"message": "hello", "level": "info"}
 
         sink.emit(original)
 
         assert sink.payloads[0] is original
+
+    def test_default_close_is_noop(self):
+        sink = _ConcreteSink()
+        sink.close()  # must not raise

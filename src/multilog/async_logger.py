@@ -1,64 +1,91 @@
-"""Async wrapper around _LoggerCore for multilog-py."""
+"""Asynchronous Logger for multilog-py."""
 
 from __future__ import annotations
 
 import asyncio
-import functools
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
-from multilog._core import _LoggerCore
+from multilog._core import (
+    _build_payload,
+    _dispatch,
+    _exception_context,
+    _LoggerState,
+)
 from multilog.levels import LogLevel
-from multilog.sinks.base import BaseSink
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-    from concurrent.futures import Executor
+    from collections.abc import Iterable, Mapping
+
+    from multilog.sinks.base import BaseSink
 
 
 class AsyncLogger:
-    """
-    Asynchronous logger that wraps _LoggerCore.
+    """Asynchronous multi-destination logger.
 
-    All logging methods are async and run the synchronous core methods
-    in a thread executor (``asyncio.to_thread()`` by default, or a
-    user-provided ``concurrent.futures.Executor``) so the event loop is
-    not blocked during sink I/O.
+    Mirrors :class:`~multilog.logger.Logger`. Logging methods are coroutines
+    that run sink I/O on a worker thread (``asyncio.to_thread``) so the event
+    loop is never blocked. The ``AsyncLogger`` and ``Logger`` for a given name
+    share one underlying state, so ``configure()`` reconfigures both at once.
 
-    Example:
-        async with AsyncLogger() as logger:
-            await logger.log("User action", LogLevel.INFO, {"user_id": 123})
+    Example::
+
+        from multilog import get_async_logger, LogLevel
+
+        log = get_async_logger()
+        await log.log("Task started", LogLevel.INFO)
     """
 
     def __init__(
         self,
-        sinks: list[BaseSink] | None = None,
-        default_context: dict[str, Any] | None = None,
-        included_levels: list[LogLevel] | None = None,
-        executor: Executor | None = None,
+        sinks: Iterable[BaseSink] | None = None,
+        context: dict[str, Any] | None = None,
+        *,
+        name: str = "app",
     ):
-        """
-        Initialize the async logger.
+        """Create a standalone async logger with its own state.
 
         Args:
-            sinks: List of log sinks. If None, creates sinks from env.
-            default_context: Context merged into all log entries.
-            included_levels: If set, log entries whose level is not in this
-                list are dropped before payload construction. Per-sink
-                ``included_levels`` filters still apply on top.
-            executor: Optional executor to run sink I/O on. When ``None``,
-                each call uses ``asyncio.to_thread()`` (the running loop's
-                default executor). Pass a ``ThreadPoolExecutor(max_workers=N)``
-                to cap concurrent sink I/O.
+            sinks: Sinks to dispatch to.
+            context: Base context merged into every entry.
+            name: Identifying name (does not register the logger).
         """
-        self._core = _LoggerCore(sinks, default_context, included_levels)
-        self._executor = executor
+        self._state = _LoggerState(name, sinks, context)
+        self._bound_context: dict[str, Any] = {}
+        self._is_bound = False
 
-    async def _run(self, fn: Callable[..., Any], *args: Any) -> Any:
-        """Run ``fn(*args)`` on the configured executor."""
-        if self._executor is None:
-            return await asyncio.to_thread(fn, *args)
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._executor, functools.partial(fn, *args))
+    @classmethod
+    def _from_state(
+        cls,
+        state: _LoggerState,
+        bound_context: dict[str, Any] | None = None,
+        *,
+        is_bound: bool = False,
+    ) -> AsyncLogger:
+        obj = cls.__new__(cls)
+        obj._state = state
+        obj._bound_context = dict(bound_context) if bound_context else {}
+        obj._is_bound = is_bound
+        return obj
+
+    @property
+    def name(self) -> str:
+        return self._state.name
+
+    @property
+    def context(self) -> Mapping[str, Any]:
+        """Read-only view of the context attached to every entry from this logger."""
+        return MappingProxyType({**self._state.context, **self._bound_context})
+
+    def _emit(
+        self,
+        message: str,
+        level: LogLevel,
+        context: dict[str, Any] | None,
+    ) -> None:
+        state = self._state
+        payload = _build_payload(state.context, self._bound_context, message, level, context)
+        _dispatch(state.sinks, payload, level)
 
     async def log(
         self,
@@ -66,79 +93,66 @@ class AsyncLogger:
         level: LogLevel,
         context: dict[str, Any] | None = None,
     ) -> None:
+        """Send a log entry to all sinks that accept ``level``.
+
+        Sink I/O runs on a worker thread so the event loop is not blocked.
         """
-        Send a log entry to all configured sinks.
-
-        Runs in a thread executor to avoid blocking the event loop.
-
-        Args:
-            message: Log message
-            level: Log level
-            context: Additional metadata to include
-        """
-        await self._run(self._core.log, message, level, context)
-
-    async def log_endpoint(
-        self,
-        endpoint_name: str,
-        method: str,
-        path: str,
-        headers: dict[str, str],
-        query_params: dict[str, str] | None = None,
-        body: Any = None,
-        context: dict[str, Any] | None = None,
-    ) -> None:
-        """
-        Log an HTTP endpoint invocation with full request details.
-
-        Runs in a thread executor to avoid blocking the event loop.
-
-        Args:
-            endpoint_name: Name/identifier for the endpoint
-            method: HTTP method (GET, POST, etc.)
-            path: URL path
-            headers: Request headers
-            query_params: Query string parameters
-            body: Request body
-            context: Additional context to include
-        """
-        await self._run(
-            self._core.log_endpoint,
-            endpoint_name,
-            method,
-            path,
-            headers,
-            query_params,
-            body,
-            context,
-        )
+        await asyncio.to_thread(self._emit, message, level, context)
 
     async def log_exception(
         self,
         message: str,
-        exception: Exception,
+        exception: BaseException,
+        *,
+        level: LogLevel = LogLevel.ERROR,
         context: dict[str, Any] | None = None,
     ) -> None:
-        """
-        Log an exception with full stacktrace and error details.
-
-        Runs in a thread executor to avoid blocking the event loop.
+        """Log an exception with its type, message, and full traceback.
 
         Args:
-            message: Descriptive message about the error
-            exception: The exception object
-            context: Additional context to include
+            message: Descriptive message about the error.
+            exception: The exception to record.
+            level: Severity to log at. Defaults to ``ERROR``.
+            context: Additional context (wins over the derived exception fields).
         """
-        await self._run(self._core.log_exception, message, exception, context)
+        ctx = _exception_context(exception)
+        if context:
+            ctx.update(context)
+        await self.log(message, level, ctx)
+
+    def bind(self, **context: Any) -> AsyncLogger:
+        """Return a lightweight view that adds ``context`` to every entry.
+
+        Shares this logger's state, so it picks up later ``configure`` changes.
+        Bound views do not own lifecycle: ``close()`` on one is a no-op.
+        """
+        merged = {**self._bound_context, **context}
+        return AsyncLogger._from_state(self._state, merged, is_bound=True)
+
+    def set_sinks(self, sinks: Iterable[BaseSink], *, close_removed: bool = True) -> None:
+        """Replace this logger's sinks. Removed sinks are closed by default.
+
+        Closing a removed sink runs synchronously and may briefly block; prefer
+        configuring sinks at startup rather than on a hot async path.
+        """
+        self._state.set_sinks(sinks, close_removed=close_removed)
+
+    def add_sink(self, sink: BaseSink) -> None:
+        """Add a sink to this logger."""
+        self._state.add_sink(sink)
+
+    def remove_sink(self, sink: BaseSink, *, close: bool = True) -> None:
+        """Remove a sink from this logger, closing it by default."""
+        self._state.remove_sink(sink, close=close)
 
     async def close(self) -> None:
-        """Close all sinks. Runs in a thread executor."""
-        await self._run(self._core.close)
+        """Close all sinks on a worker thread. No-op on a bound view."""
+        if self._is_bound:
+            return
+        await asyncio.to_thread(self._state.close_all)
 
     async def __aenter__(self) -> AsyncLogger:
-        """Enter async context manager."""
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Exit async context manager and cleanup."""
         await self.close()

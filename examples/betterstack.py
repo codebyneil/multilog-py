@@ -1,36 +1,37 @@
-"""Send logs to Betterstack with console output side-by-side."""
+"""Betterstack sink: batching (default), on_error observability, and sync mode.
 
-from multilog import Logger, LogLevel
-from multilog.sinks.betterstack import BetterstackSink
-from multilog.sinks.console import ConsoleSink
+Reads credentials from the environment so no secrets live in the repo:
+    export BETTERSTACK_TOKEN=...   BETTERSTACK_INGEST_URL=https://sNNNN.region.betterstackdata.com
+    uv run python examples/betterstack.py
+"""
 
-logger = Logger(
-    sinks=[
-        ConsoleSink(),
-        BetterstackSink(
-            token="FyAaTuM96LKCWsf5NRzmt572",
-            ingest_url="https://s1734751.eu-fsn-3.betterstackdata.com",
-        ),
-    ],
-)
+import os
 
-logger.log("Application started", LogLevel.INFO, {"version": "0.1.0"})
-logger.log("Loading configuration", LogLevel.DEBUG, {"source": "env"})
-logger.log("Disk usage at 90%", LogLevel.WARN, {"disk": "/dev/sda1", "usage_pct": 90})
-logger.log("Failed to reach database", LogLevel.ERROR, {"host": "db.internal", "timeout_ms": 5000})
+from multilog import BetterstackSink, ConsoleSink, LogLevel, configure, get_logger
 
-logger.log_endpoint(
-    endpoint_name="get_user",
-    method="GET",
-    path="/api/users/42",
-    headers={"Authorization": "Bearer ***"},
-    query_params={"fields": "name,email"},
-)
+token = os.environ.get("BETTERSTACK_TOKEN")
+url = os.environ.get("BETTERSTACK_INGEST_URL")
+if not (token and url):
+    raise SystemExit("Set BETTERSTACK_TOKEN and BETTERSTACK_INGEST_URL to run this example.")
 
-try:
-    result = 1 / 0
-except Exception as exc:
-    logger.log_exception("Unexpected error in calculation", exc, context={"input": "1/0"})
 
-logger.close()
-print("\nDone — check Betterstack Live Tail for the logs.")
+def on_error(exc, payloads):
+    # Delivery failures are observable here instead of vanishing to stderr.
+    print(f"betterstack delivery failed: {type(exc).__name__}: {exc} ({len(payloads)} events)")
+
+
+# Batching (default): non-blocking — a background worker delivers in batches.
+configure(sinks=[ConsoleSink(), BetterstackSink(token, url, on_error=on_error)])
+log = get_logger()
+for i in range(5):
+    log.log("batched event", LogLevel.INFO, {"i": i})
+log.close()  # flushes the batch worker before exit
+
+# Synchronous mode — the right choice for a short-lived CLI, where a background
+# worker would never get a chance to flush.
+cli_sink = BetterstackSink(token, url, batch=False, on_error=on_error, register_atexit=False)
+configure(sinks=[ConsoleSink(), cli_sink], name="cli")
+get_logger("cli").log("one-shot CLI event", LogLevel.INFO)
+get_logger("cli").close()
+
+print("done — check Betterstack Live Tail for the events.")

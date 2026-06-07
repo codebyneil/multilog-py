@@ -1,23 +1,36 @@
-"""
-multilog-py - Multi-destination logging library for Python.
+"""multilog-py — multi-destination logging with stable, reconfigurable handles.
 
-Example usage (synchronous):
-    from multilog import Logger, LogLevel
+The blessed pattern is a stable named handle plus in-place configuration::
 
-    logger = Logger()  # Uses BETTERSTACK_TOKEN from env
-    logger.log("User action", LogLevel.INFO, {"user_id": 123})
+    # anywhere, even at import time before configure() runs:
+    from multilog import get_logger, LogLevel
+    log = get_logger()                      # process-stable handle for "app"
 
-Example usage (asynchronous):
-    from multilog import AsyncLogger, LogLevel
+    # once, at startup:
+    from multilog import configure, ConsoleSink, BetterstackSink
+    configure(sinks=[ConsoleSink(), BetterstackSink(token="...", ingest_url="...")])
 
-    logger = AsyncLogger()
-    await logger.log("User action", LogLevel.INFO, {"user_id": 123})
+    log.log("ready", LogLevel.INFO)         # routes to the configured sinks
+
+``get_logger(name)`` always returns the same object for a given name, and
+``configure(...)`` mutates that object in place — so a handle captured before
+configuration still delivers to the sinks you install later.
+
+A ready-to-use default handle is also exported::
+
+    from multilog import logger
+    logger.log("hello", LogLevel.INFO)
 """
 
 from importlib.metadata import PackageNotFoundError, version
 
+from multilog._registry import (
+    configure,
+    get_async_logger,
+    get_logger,
+)
 from multilog.async_logger import AsyncLogger
-from multilog.exceptions import ConfigError, MultilogError, SinkError
+from multilog.exceptions import MultilogError, QueueFull, SinkError
 from multilog.levels import LogLevel
 from multilog.logger import Logger
 from multilog.sinks import (
@@ -25,22 +38,36 @@ from multilog.sinks import (
     BetterstackSink,
     ConsoleSink,
     FileSink,
+    OverflowPolicy,
 )
 
 try:
     __version__ = version("multilog")
-except PackageNotFoundError:
+except PackageNotFoundError:  # pragma: no cover - exercised in a subprocess (see test_package.py)
     __version__ = "0.0.0"
 
+#: Ready-to-use default logger handle (equivalent to ``get_logger("app")``).
+logger = get_logger()
+
 __all__ = [
+    # Registry — the primary API.
+    "get_logger",
+    "get_async_logger",
+    "configure",
+    "logger",
+    # Logger types (mainly for type hints; prefer get_logger to construct).
     "Logger",
     "AsyncLogger",
+    # Levels.
     "LogLevel",
+    # Sinks.
     "BaseSink",
-    "BetterstackSink",
     "ConsoleSink",
     "FileSink",
-    "ConfigError",
+    "BetterstackSink",
+    "OverflowPolicy",
+    # Exceptions.
     "MultilogError",
     "SinkError",
+    "QueueFull",
 ]

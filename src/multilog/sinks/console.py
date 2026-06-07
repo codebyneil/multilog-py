@@ -2,6 +2,7 @@
 
 import json
 import sys
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -26,30 +27,29 @@ class ConsoleSink(BaseSink):
     def __init__(
         self,
         use_color: bool = True,
-        default_context: dict[str, Any] | None = None,
-        included_levels: list[LogLevel] | None = None,
+        *,
+        min_level: LogLevel = LogLevel.TRACE,
+        only: Iterable[LogLevel] | None = None,
     ):
-        """
-        Initialize console sink.
+        """Initialize console sink.
 
         Args:
-            use_color: Whether to use ANSI color codes
-            default_context: Default context merged into all log entries from this sink.
-            included_levels: Log levels this sink will emit. Defaults to all levels.
+            use_color: Whether to use ANSI color codes.
+            min_level: Emit entries at this severity or higher.
+            only: Explicit set of levels to emit (overrides ``min_level``).
         """
-        super().__init__(default_context=default_context, included_levels=included_levels)
+        super().__init__(min_level=min_level, only=only)
         self.use_color = use_color
 
     def _emit(self, payload: dict[str, Any]) -> None:
-        """
-        Print formatted log to stdout or stderr.
+        """Print formatted log to stdout or stderr.
 
         Format: timestamp  LEVEL  message  {context}
 
         Args:
-            payload: Log payload to print
+            payload: Log payload to print.
         """
-        level = payload.get("level", "info")
+        level = str(payload.get("level", "info"))
         message = payload.get("message", "")
         timestamp_ms = payload.get("timestamp_ms", 0)
 
@@ -75,6 +75,6 @@ class ConsoleSink(BaseSink):
         excluded_keys = ("level", "message", "timestamp_ms")
         context = {k: v for k, v in payload.items() if k not in excluded_keys}
         if context:
-            formatted += f"  {json.dumps(context)}"
+            formatted += f"  {json.dumps(context, default=str)}"
 
         print(formatted, file=stream)
