@@ -13,10 +13,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   default is a no-op for synchronous sinks.
 
 ### Changed
-- `BetterstackSink` now sends an ISO 8601 `dt` event-time (derived from
-  `timestamp_ms`) so the real event time is preserved through batching and
-  retries instead of falling back to Betterstack's ingestion time. A
-  user-supplied `dt` is left untouched.
+- `BetterstackSink` now sends a Unix-millisecond `dt` event-time (the
+  `timestamp_ms` value, passed through directly) so the real event time is
+  preserved through batching and retries instead of falling back to
+  Betterstack's ingestion time. A user-supplied `dt` is left untouched.
 - `BetterstackSink` honors the HTTP `Retry-After` header (delta-seconds or
   HTTP-date) on retryable responses, falling back to jittered exponential
   backoff when the header is absent. Retry waits remain bounded by the shutdown

@@ -10,7 +10,6 @@ import httpx
 from pytest_httpx import HTTPXMock
 
 from multilog import BetterstackSink
-from multilog.sinks.betterstack import _iso_ms
 
 INGEST_URL = "https://in.logs.example.com"
 
@@ -36,16 +35,12 @@ def _sink(**kwargs) -> BetterstackSink:
 
 
 class TestEventTimeDt:
-    def test_iso_ms_format(self):
-        assert _iso_ms(1_700_000_000_000) == "2023-11-14T22:13:20.000Z"
-        assert _iso_ms(1_700_000_000_123) == "2023-11-14T22:13:20.123Z"
-
     def test_dt_added_from_timestamp_ms(self, httpx_mock: HTTPXMock):
         httpx_mock.add_response(url=INGEST_URL, status_code=202)
         sink = _sink(batch=False)
         sink._emit(_payload())
         event = _events(httpx_mock)[0]
-        assert event["dt"] == "2023-11-14T22:13:20.000Z"
+        assert event["dt"] == 1_700_000_000_000  # Unix ms passed through
         assert event["timestamp_ms"] == 1_700_000_000_000  # original kept too
         sink.close()
 

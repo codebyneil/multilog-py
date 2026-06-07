@@ -24,7 +24,7 @@ import time
 import traceback
 from collections import deque
 from collections.abc import Callable, Iterable
-from datetime import UTC, datetime
+from datetime import UTC
 from email.utils import parsedate_to_datetime
 from enum import StrEnum
 from typing import Any
@@ -48,12 +48,6 @@ class _FlushMarker:
 
     def __init__(self) -> None:
         self.event = threading.Event()
-
-
-def _iso_ms(ms: int) -> str:
-    """Render epoch milliseconds as a Betterstack-friendly ISO 8601 UTC string."""
-    dt = datetime.fromtimestamp(ms / 1000, tz=UTC)
-    return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{ms % 1000:03d}Z"
 
 
 OnError = Callable[[Exception, "tuple[dict[str, Any], ...]"], None]
@@ -359,16 +353,18 @@ class BetterstackSink(BaseSink):
 
     @staticmethod
     def _betterstack_event(payload: dict[str, Any]) -> dict[str, Any]:
-        """Augment a payload with an ISO ``dt`` event-time Betterstack understands.
+        """Augment a payload with a Unix-ms ``dt`` event-time Betterstack understands.
 
         Without ``dt`` Betterstack stamps events with ingestion time, which drifts
-        from the real event time once batching/retries delay delivery. A
-        user-supplied ``dt`` is left untouched.
+        from the real event time once batching/retries delay delivery. Betterstack
+        accepts ``dt`` as a Unix timestamp in seconds, milliseconds, or nanoseconds,
+        so ``timestamp_ms`` is passed through directly. A user-supplied ``dt`` is
+        left untouched.
         """
         ts = payload.get("timestamp_ms")
         if "dt" in payload or not isinstance(ts, int):
             return payload
-        return {**payload, "dt": _iso_ms(ts)}
+        return {**payload, "dt": ts}
 
     def _sleep_backoff(self, attempt: int) -> None:
         """Sleep with full-jitter exponential backoff, bounded by the shutdown deadline."""
