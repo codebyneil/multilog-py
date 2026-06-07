@@ -99,3 +99,19 @@ class TestLiveDelivery:
             log.log_exception("integration exception", exc, level=LogLevel.ERROR)
         get_logger("itest").close()
         assert errors == []
+
+    def test_flush_delivers_without_close(self, errors, run_id):
+        # Long flush_interval so only flush() — not the timer — can deliver.
+        sink = _sink(errors, batch=True, flush_interval=300.0)
+        configure(sinks=[sink], name="itest")
+        log = get_logger("itest")
+        for i in range(3):
+            log.log("integration flush", LogLevel.INFO, {"run_id": run_id, "i": i})
+
+        assert sink.flush(timeout=15) is True  # delivered without closing
+        assert errors == []
+
+        # Sink stays usable afterward.
+        log.log("after flush", LogLevel.INFO, {"run_id": run_id})
+        get_logger("itest").close()
+        assert errors == []

@@ -24,6 +24,8 @@ import time
 import traceback
 from collections import deque
 from collections.abc import Callable, Iterable
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from enum import StrEnum
 from typing import Any
 
@@ -37,6 +39,22 @@ _RETRYABLE_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
 
 # Sentinel pushed onto the queue by close() to wake and stop the worker.
 _STOP = object()
+
+
+class _FlushMarker:
+    """Queue marker whose event is set once all events enqueued before it ship."""
+
+    __slots__ = ("event",)
+
+    def __init__(self) -> None:
+        self.event = threading.Event()
+
+
+def _iso_ms(ms: int) -> str:
+    """Render epoch milliseconds as a Betterstack-friendly ISO 8601 UTC string."""
+    dt = datetime.fromtimestamp(ms / 1000, tz=UTC)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{ms % 1000:03d}Z"
+
 
 OnError = Callable[[Exception, "tuple[dict[str, Any], ...]"], None]
 
@@ -202,24 +220,32 @@ class BetterstackSink(BaseSink):
         stopping = False
         try:
             while True:
-                batch, stop = self._collect_batch(block=not stopping)
+                batch, stop, flush_marker = self._collect_batch(block=not stopping)
                 if stop:
                     stopping = True
                 if batch:
                     self._send(batch)
-                elif stopping:
+                if flush_marker is not None:
+                    # Everything enqueued before the marker has now shipped.
+                    flush_marker.event.set()
+                if not batch and flush_marker is None and stopping:
                     break
         except Exception:  # pragma: no cover - defense in depth; must not die silently
             traceback.print_exc(file=sys.stderr)
 
-    def _collect_batch(self, *, block: bool) -> tuple[list[dict[str, Any]], bool]:
+    def _collect_batch(
+        self, *, block: bool
+    ) -> tuple[list[dict[str, Any]], bool, _FlushMarker | None]:
         """Gather up to ``batch_size`` events from the queue and overflow buffer.
 
-        Returns the batch and whether the stop sentinel was seen.
+        Returns the batch, whether the stop sentinel was seen, and a flush marker
+        if one was reached (collection stops at a marker so the items before it
+        ship before the marker's event is set).
         """
         assert self._queue is not None
         batch: list[dict[str, Any]] = []
         stop = False
+        flush_marker: _FlushMarker | None = None
 
         if block:
             try:
@@ -228,25 +254,48 @@ class BetterstackSink(BaseSink):
                 first = None
             if first is _STOP:
                 stop = True
+            elif isinstance(first, _FlushMarker):
+                flush_marker = first
             elif first is not None:
                 batch.append(first)
 
-        while len(batch) < self._batch_size:
-            try:
-                item = self._queue.get_nowait()
-            except queue.Empty:
-                break
-            if item is _STOP:
-                stop = True
-                break
-            batch.append(item)
+        if not stop and flush_marker is None:
+            while len(batch) < self._batch_size:
+                try:
+                    item = self._queue.get_nowait()
+                except queue.Empty:
+                    break
+                if item is _STOP:
+                    stop = True
+                    break
+                if isinstance(item, _FlushMarker):
+                    flush_marker = item
+                    break
+                batch.append(item)
 
-        if self._overflow is not None and len(batch) < self._batch_size:
+        if flush_marker is None and self._overflow is not None and len(batch) < self._batch_size:
             with self._overflow_lock:
                 while self._overflow and len(batch) < self._batch_size:
                     batch.append(self._overflow.popleft())
 
-        return batch, stop
+        return batch, stop, flush_marker
+
+    def flush(self, timeout: float | None = None) -> bool:
+        """Block until events queued so far are delivered.
+
+        Returns ``True`` once the queue has drained (or there was nothing to
+        flush), ``False`` if ``timeout`` elapsed first. A no-op that returns
+        ``True`` in synchronous mode, after ``close()``, or when called from the
+        worker thread (e.g. inside ``on_error``) to avoid self-deadlock.
+        """
+        if not self._batch or self._closed:
+            return True
+        if self._worker is not None and threading.current_thread() is self._worker:
+            return True
+        assert self._queue is not None
+        marker = _FlushMarker()
+        self._queue.put(marker)
+        return marker.event.wait(timeout)
 
     # -- delivery ---------------------------------------------------------
 
@@ -266,6 +315,7 @@ class BetterstackSink(BaseSink):
         for attempt in range(self.max_retries + 1):
             if self._deadline is not None and time.monotonic() >= self._deadline:
                 break
+            retry_after: float | None = None
             try:
                 response = self._client.post(self.ingest_url, headers=headers, content=data)
             except (httpx.TransportError, httpx.TimeoutException) as exc:
@@ -277,13 +327,17 @@ class BetterstackSink(BaseSink):
                     except httpx.HTTPStatusError as exc:
                         self._handle_error(exc, tuple(good))
                     return
+                retry_after = self._retry_after_seconds(response)
                 try:
                     response.raise_for_status()
                 except httpx.HTTPStatusError as exc:
                     last_exc = exc
 
             if attempt < self.max_retries:
-                self._sleep_backoff(attempt)
+                if retry_after is not None:
+                    self._sleep(retry_after)
+                else:
+                    self._sleep_backoff(attempt)
 
         if last_exc is not None:
             self._handle_error(last_exc, tuple(good))
@@ -294,7 +348,7 @@ class BetterstackSink(BaseSink):
         good: list[dict[str, Any]] = []
         for payload in payloads:
             try:
-                parts.append(json.dumps(payload, default=str))
+                parts.append(json.dumps(self._betterstack_event(payload), default=str))
             except Exception as exc:  # one bad event must not sink the whole batch
                 self._handle_error(exc, (payload,))
                 continue
@@ -303,14 +357,51 @@ class BetterstackSink(BaseSink):
             return None, []
         return "[" + ",".join(parts) + "]", good
 
+    @staticmethod
+    def _betterstack_event(payload: dict[str, Any]) -> dict[str, Any]:
+        """Augment a payload with an ISO ``dt`` event-time Betterstack understands.
+
+        Without ``dt`` Betterstack stamps events with ingestion time, which drifts
+        from the real event time once batching/retries delay delivery. A
+        user-supplied ``dt`` is left untouched.
+        """
+        ts = payload.get("timestamp_ms")
+        if "dt" in payload or not isinstance(ts, int):
+            return payload
+        return {**payload, "dt": _iso_ms(ts)}
+
     def _sleep_backoff(self, attempt: int) -> None:
         """Sleep with full-jitter exponential backoff, bounded by the shutdown deadline."""
         ceiling = min(self.backoff_max, self.backoff_base * (2**attempt))
-        delay = random.uniform(0, ceiling)
+        self._sleep(random.uniform(0, ceiling))
+
+    def _sleep(self, delay: float) -> None:
+        """Sleep ``delay`` seconds, clamped to the shutdown deadline when closing."""
         if self._deadline is not None:
             delay = min(delay, max(0.0, self._deadline - time.monotonic()))
         if delay > 0:
             time.sleep(delay)
+
+    @staticmethod
+    def _retry_after_seconds(response: httpx.Response) -> float | None:
+        """Parse a ``Retry-After`` header (delta-seconds or HTTP-date) into seconds."""
+        value = response.headers.get("Retry-After")
+        if not value:
+            return None
+        value = value.strip()
+        try:
+            return max(0.0, float(value))
+        except ValueError:
+            pass
+        try:
+            when = parsedate_to_datetime(value)
+        except (TypeError, ValueError):
+            return None
+        if when is None:  # pragma: no cover - parsedate_to_datetime raises on bad input in 3.11+
+            return None
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=UTC)
+        return max(0.0, when.timestamp() - time.time())
 
     def _handle_error(self, exc: Exception, payloads: tuple[dict[str, Any], ...]) -> None:
         if self._on_error is not None:
@@ -371,6 +462,9 @@ class BetterstackSink(BaseSink):
             except queue.Empty:
                 break
             if item is _STOP:
+                continue
+            if isinstance(item, _FlushMarker):
+                item.event.set()  # never leave a flush() waiter hanging
                 continue
             pending.append(item)
         if self._overflow is not None:

@@ -145,6 +145,10 @@ class AsyncLogger:
         """Remove a sink from this logger, closing it by default."""
         self._state.remove_sink(sink, close=close)
 
+    async def flush(self, timeout: float | None = None) -> None:
+        """Force buffered sinks to deliver now, on a worker thread. Safe on bound views."""
+        await asyncio.to_thread(self._state.flush_all, timeout)
+
     async def close(self) -> None:
         """Close all sinks on a worker thread. No-op on a bound view."""
         if self._is_bound:

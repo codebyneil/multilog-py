@@ -7,9 +7,12 @@ import subprocess
 import sys
 import textwrap
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
+
+from multilog import BetterstackSink
 
 
 class _CollectingServer:
@@ -106,3 +109,58 @@ class TestForkSafety:
             _, exit_status = os.waitpid(pid, 0)
             assert status == bytes([0])  # child reported success
             assert os.WIFEXITED(exit_status) and os.WEXITSTATUS(exit_status) == 0
+
+
+class _RetryAfterServer:
+    """Local server: the first POST returns 429 + Retry-After, the rest 202."""
+
+    def __init__(self, retry_after: str = "1"):
+        self.requests = 0
+        outer = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):  # noqa: N802
+                self.rfile.read(int(self.headers.get("Content-Length", 0)))
+                outer.requests += 1
+                if outer.requests == 1:
+                    self.send_response(429)
+                    self.send_header("Retry-After", retry_after)
+                    self.end_headers()
+                else:
+                    self.send_response(202)
+                    self.end_headers()
+
+            def log_message(self, *args):  # silence
+                pass
+
+        self._server = HTTPServer(("127.0.0.1", 0), Handler)
+        self.port = self._server.server_address[1]
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+
+    def __enter__(self):
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._server.shutdown()
+        self._server.server_close()
+
+
+class TestRetryAfterRealServer:
+    def test_real_429_retry_after_is_honored(self):
+        """Against a real socket (no mocks), a 429 + Retry-After actually delays the retry."""
+        with _RetryAfterServer(retry_after="1") as server:
+            sink = BetterstackSink(
+                token="t",
+                ingest_url=f"http://127.0.0.1:{server.port}",
+                batch=False,
+                register_atexit=False,
+                max_retries=3,
+            )
+            start = time.monotonic()
+            sink._emit({"message": "rt", "level": "info", "timestamp_ms": int(time.time() * 1000)})
+            elapsed = time.monotonic() - start
+            sink.close()
+
+        assert server.requests == 2  # retried exactly once, then succeeded
+        assert elapsed >= 0.9  # honored Retry-After: 1 with a real wait (not mocked)

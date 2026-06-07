@@ -202,9 +202,10 @@ class TestCollectBatchFull:
         sink._queue.put_nowait(_payload("C"))
         sink._queue.put_nowait(_payload("D"))
 
-        batch, stop = sink._collect_batch(block=False)
+        batch, stop, flush_marker = sink._collect_batch(block=False)
         assert len(batch) == 2  # filled to batch_size, did not take all three
         assert stop is False
+        assert flush_marker is None
 
         release.set()
         sink.close(flush_timeout=0.5)

@@ -83,3 +83,42 @@ class TestStateMutationEdges:
         log.add_sink(a)  # already present
 
         assert list(log._state.sinks).count(a) == 1
+
+
+class TestFlushPropagation:
+    def test_logger_flush_calls_flush_on_each_sink(self):
+        a, b = RecordingSink(), RecordingSink()
+        log = Logger(sinks=[a, b])
+
+        log.flush()
+
+        assert a.flush_calls == 1
+        assert b.flush_calls == 1
+
+    def test_bound_logger_flush_still_flushes_shared_sinks(self):
+        sink = RecordingSink()
+        log = Logger(sinks=[sink]).bind(x=1)
+
+        log.flush()  # allowed on bound views (unlike close)
+
+        assert sink.flush_calls == 1
+
+    async def test_async_logger_flush_calls_flush_on_each_sink(self):
+        a, b = RecordingSink(), RecordingSink()
+        log = AsyncLogger(sinks=[a, b])
+
+        await log.flush()
+
+        assert a.flush_calls == 1
+        assert b.flush_calls == 1
+
+    def test_flush_isolates_a_failing_sink(self, capsys):
+        class BadFlush(RecordingSink):
+            def flush(self, timeout=None):
+                raise RuntimeError("flush boom")
+
+        good = RecordingSink()
+        Logger(sinks=[BadFlush(), good]).flush()  # must not raise into the caller
+
+        assert good.flush_calls == 1
+        assert "failed to flush" in capsys.readouterr().err

@@ -139,6 +139,15 @@ class Logger:
         """Remove a sink from this logger, closing it by default."""
         self._state.remove_sink(sink, close=close)
 
+    def flush(self, timeout: float | None = None) -> None:
+        """Force buffered sinks to deliver now. Safe on bound views.
+
+        Unlike ``close()``, this only drains shared sinks (e.g. a batching
+        BetterstackSink); it does not tear anything down, so it is allowed on
+        bound views too.
+        """
+        self._state.flush_all(timeout)
+
     def close(self) -> None:
         """Close all sinks. No-op on a bound view (its sinks are shared)."""
         if self._is_bound:

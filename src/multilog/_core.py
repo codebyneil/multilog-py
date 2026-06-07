@@ -90,6 +90,12 @@ class _LoggerState:
         for sink in sinks:
             _safe_close(sink)
 
+    def flush_all(self, timeout: float | None = None) -> None:
+        with self._lock:
+            sinks = self._sinks
+        for sink in sinks:
+            _safe_flush(sink, timeout)
+
 
 def _now_ms() -> int:
     return time.time_ns() // 1_000_000
@@ -158,5 +164,16 @@ def _safe_close(sink: BaseSink) -> None:
     except Exception:
         print(
             f"multilog: sink {type(sink).__name__} failed to close\n{traceback.format_exc()}",
+            file=sys.stderr,
+        )
+
+
+def _safe_flush(sink: BaseSink, timeout: float | None) -> None:
+    """Flush a sink, isolating and reporting any failure. Never raises."""
+    try:
+        sink.flush(timeout)
+    except Exception:
+        print(
+            f"multilog: sink {type(sink).__name__} failed to flush\n{traceback.format_exc()}",
             file=sys.stderr,
         )

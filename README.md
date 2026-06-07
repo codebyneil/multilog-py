@@ -1,5 +1,7 @@
 # multilog-py
 
+![CI](https://github.com/codebyneil/multilog-py/actions/workflows/ci.yml/badge.svg)
+
 A multi-destination Python logging library with **stable, reconfigurable logger handles**, structured logging, threshold-based level filtering, and a robust, batching Betterstack sink.
 
 ## Why stable handles
@@ -222,6 +224,12 @@ BetterstackSink(token="...", ingest_url="...", batch=False)
 
 **`on_error`** is called as `on_error(exception, payloads)` where `payloads` is a tuple of the affected log dicts. It runs on the worker thread (or the calling thread for an overflow drop), so keep it fast and make sure it doesn't raise.
 
+**Event time.** Each event is sent with a `dt` (ISO 8601 UTC, derived from the log's `timestamp_ms`) so Betterstack records the time the log *happened* rather than when it was ingested — important once batching or retries delay delivery. A `dt` you set yourself in context is left untouched.
+
+**Rate limits.** On a `429`/`503` carrying a `Retry-After` header (delta-seconds or HTTP-date), the sink waits exactly that long before retrying; otherwise it uses jittered exponential backoff. Retry waits are bounded by the `close()` flush deadline.
+
+**Forcing delivery.** Call `flush(timeout=None)` to block until everything queued so far is delivered, without tearing the sink down — useful at request/job boundaries in a long-running service. It's a no-op in synchronous mode. At the logger level, `get_logger().flush()` (and `await get_async_logger().flush()`) flushes every sink.
+
 ### Custom sinks
 
 Subclass `BaseSink` and implement `_emit()`:
@@ -288,6 +296,7 @@ Guidance: **FATAL** for crashes, **ERROR** for an operation that can't continue,
 log = get_logger()
 configure(sinks=[FileSink("logs/app.jsonl")])
 # ...
+log.flush()                  # force buffered sinks to deliver now (does not close)
 log.close()                  # flushes/closes every sink
 
 # context managers close on exit:

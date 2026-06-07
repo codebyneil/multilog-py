@@ -27,12 +27,17 @@ class RecordingSink(BaseSink):
         super().__init__(**kwargs)
         self.payloads: list[dict[str, Any]] = []
         self.close_calls: int = 0
+        self.flush_calls: int = 0
 
     def _emit(self, payload: dict[str, Any]) -> None:
         self.payloads.append(payload)
 
     def close(self) -> None:
         self.close_calls += 1
+
+    def flush(self, timeout: float | None = None) -> bool:
+        self.flush_calls += 1
+        return True
 
 
 class RaisingSink(BaseSink):

@@ -67,3 +67,8 @@ class TestEmit:
     def test_default_close_is_noop(self):
         sink = _ConcreteSink()
         sink.close()  # must not raise
+
+    def test_default_flush_returns_true(self):
+        sink = _ConcreteSink()
+        assert sink.flush() is True
+        assert sink.flush(timeout=1.0) is True

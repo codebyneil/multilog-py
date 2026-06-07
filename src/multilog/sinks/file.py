@@ -56,6 +56,13 @@ class FileSink(BaseSink):
                 raise SinkError(f"FileSink({self.file_path}) is closed")
             self._fh.write(line)
 
+    def flush(self, timeout: float | None = None) -> bool:  # noqa: ARG002
+        """Flush the underlying file handle to the OS. Returns True."""
+        with self._lock:
+            if not self._closed:
+                self._fh.flush()
+        return True
+
     def close(self) -> None:
         """Flush and close the underlying file handle. Idempotent."""
         with self._lock:

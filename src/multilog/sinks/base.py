@@ -64,6 +64,15 @@ class BaseSink(ABC):
     def close(self) -> None:  # noqa: B027 - intentional optional override, not abstract
         """Release sink resources. Subclasses can override if needed."""
 
+    def flush(self, timeout: float | None = None) -> bool:  # noqa: ARG002
+        """Block until buffered events are delivered.
+
+        Returns ``True`` once delivered or if there is nothing buffered, ``False``
+        on timeout. The default is a no-op (most sinks write synchronously);
+        buffering sinks override it.
+        """
+        return True
+
     def _accepts(self, level: LogLevel) -> bool:
         """Return whether this sink should emit an entry at ``level``."""
         if self.only is not None:

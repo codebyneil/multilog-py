@@ -112,3 +112,18 @@ class TestLifecycle:
         assert path.exists()
         rows = _read_jsonl(path)
         assert rows[0]["message"] == "hi"
+
+    def test_flush_makes_writes_visible_and_returns_true(self, tmp_path):
+        path = tmp_path / "app.jsonl"
+        sink = FileSink(path)
+        sink.emit({"message": "x", "level": "info"})
+
+        assert sink.flush() is True
+        assert _read_jsonl(path)[0]["message"] == "x"
+
+        sink.close()
+
+    def test_flush_after_close_is_safe(self, tmp_path):
+        sink = FileSink(tmp_path / "app.jsonl")
+        sink.close()
+        assert sink.flush() is True  # must not raise on a closed handle

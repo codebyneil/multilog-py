@@ -62,7 +62,12 @@ class TestSyncMode:
         sink._emit(payload)
 
         body = json.loads(httpx_mock.get_requests()[0].content)
-        assert body == [payload]
+        assert len(body) == 1
+        event = body[0]
+        assert event["message"] == "payload-test"
+        assert event["level"] == "info"
+        assert event["timestamp_ms"] == payload["timestamp_ms"]
+        assert "dt" in event  # event-time added for Betterstack
         sink.close()
 
     def test_no_worker_thread(self):
