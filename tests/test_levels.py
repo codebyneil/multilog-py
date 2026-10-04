@@ -228,7 +228,7 @@ class TestComparisons:
 
     def test_not_implemented_for_other_types(self):
         assert LogLevel.INFO.__ge__(42) is NotImplemented
-        assert LogLevel.INFO.__gt__("info") is NotImplemented
+        assert LogLevel.INFO.__gt__("nope") is NotImplemented  # a level *value* string is accepted
         assert LogLevel.INFO.__le__(3.14) is NotImplemented
         assert LogLevel.INFO.__lt__(None) is NotImplemented
 

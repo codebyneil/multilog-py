@@ -85,8 +85,16 @@ class _LoggerState:
             _safe_close(sink)
 
     def close_all(self) -> None:
+        """Close every sink and detach it.
+
+        A closed sink cannot accept entries, so leaving it attached would only
+        turn later ``log()`` calls on a long-lived registry handle into stderr
+        noise. Afterwards the logger routes nowhere until new sinks are
+        installed via ``configure``/``set_sinks``/``add_sink``.
+        """
         with self._lock:
             sinks = self._sinks
+            self._sinks = ()
         for sink in sinks:
             _safe_close(sink)
 

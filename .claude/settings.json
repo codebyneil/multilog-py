@@ -22,7 +22,7 @@
           },
           {
             "type": "command",
-            "command": "if echo \"$CLAUDE_FILE\" | grep -qE 'src/multilog/.*\\.py$'; then uv run python test_logger.py 2>&1 | tail -20; fi",
+            "command": "if echo \"$CLAUDE_FILE\" | grep -qE 'src/multilog/.*\\.py$'; then uv run pytest -q -x --no-cov 2>&1 | tail -20; fi",
             "statusMessage": "Running tests..."
           }
         ]

@@ -149,7 +149,11 @@ class Logger:
         self._state.flush_all(timeout)
 
     def close(self) -> None:
-        """Close all sinks. No-op on a bound view (its sinks are shared)."""
+        """Close and detach all sinks. No-op on a bound view (its sinks are shared).
+
+        Afterwards this logger routes nowhere, quietly, until ``configure`` /
+        ``set_sinks`` / ``add_sink`` installs new sinks.
+        """
         if self._is_bound:
             return
         self._state.close_all()

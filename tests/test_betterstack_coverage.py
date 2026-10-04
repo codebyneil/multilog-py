@@ -10,7 +10,6 @@ import time
 from pytest_httpx import HTTPXMock
 
 from multilog import BetterstackSink
-from multilog.sinks.betterstack import _STOP
 
 INGEST_URL = "https://in.logs.example.com"
 
@@ -59,7 +58,9 @@ class TestWorkerIdle:
 
 
 class TestDeadline:
-    def test_send_breaks_when_deadline_passed(self, monkeypatch):
+    def test_send_past_deadline_reports_batch_without_posting(self, monkeypatch):
+        """Once the drain deadline has passed, _send() must not POST — but the batch is
+        undelivered and must still reach on_error rather than vanish."""
         errors: list = []
         sink = BetterstackSink(
             token="t",
@@ -71,11 +72,15 @@ class TestDeadline:
         posted: list = []
         monkeypatch.setattr(sink._client, "post", lambda *a, **k: posted.append(1))
 
+        payload = _payload()
         sink._deadline = time.monotonic() - 1  # already past
-        sink._send([_payload()])
+        sink._send([payload])
 
         assert posted == []  # never attempted a POST
-        assert errors == []  # no last_exc, so no on_error
+        assert len(errors) == 1
+        exc, payloads = errors[0]
+        assert isinstance(exc, TimeoutError)
+        assert payloads == (payload,)
         sink.close()
 
     def test_sleep_backoff_sleeps_within_future_deadline(self, monkeypatch):
@@ -165,9 +170,11 @@ class TestReportUnflushed:
         assert isinstance(exc, TimeoutError)
         assert {p["message"] for p in payloads} == {"B", "C"}
 
-        # Let the parked worker exit cleanly.
+        # Once released, the worker notices the drain deadline has passed and exits
+        # on its own — even though close() consumed the _STOP sentinel while draining.
         release.set()
-        sink._queue.put(_STOP)
+        sink._worker.join(timeout=2)
+        assert not sink._worker.is_alive()
 
 
 class TestCollectBatchFull:

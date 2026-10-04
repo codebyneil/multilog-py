@@ -19,8 +19,8 @@ class FileSink(BaseSink):
         file_path: str | Path,
         *,
         append: bool = True,
-        min_level: LogLevel = LogLevel.TRACE,
-        only: Iterable[LogLevel] | None = None,
+        min_level: LogLevel | str = LogLevel.TRACE,
+        only: Iterable[LogLevel | str] | None = None,
     ):
         """Initialize file sink.
 

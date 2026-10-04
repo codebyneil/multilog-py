@@ -113,6 +113,5 @@ def _reset_registry_for_testing() -> None:
     with _registry_lock:
         entries = list(_registry.values())
     for entry in entries:
-        entry.state.close_all()
-        entry.state.set_sinks([], close_removed=False)
+        entry.state.close_all()  # closes and detaches every sink
         entry.state.set_context(None)

@@ -52,8 +52,10 @@ configure(sinks=[...])                     # the captured `log` now uses these s
 ## Installation
 
 ```bash
-uv add multilog        # or: pip install multilog
+uv add multilog-py     # or: pip install multilog-py
 ```
+
+The package on PyPI is `multilog-py` (plain `multilog` is an unrelated project); the import name is `multilog`.
 
 ## Quick start
 
@@ -138,6 +140,7 @@ Six levels ordered by severity (OpenTelemetry-based):
 LogLevel.ERROR > LogLevel.INFO          # True
 LogLevel[LogLevel.INFO:]                # [INFO, WARN, ERROR, FATAL]
 LogLevel[:LogLevel.INFO]                # [TRACE, DEBUG, INFO]
+LogLevel.WARN >= "error"                # False — a value string compares by severity, never alphabetically
 ```
 
 ## Level filtering (threshold-based)
@@ -146,7 +149,10 @@ Every sink takes a `min_level` threshold (default `TRACE` — emit everything). 
 
 ```python
 ConsoleSink(min_level=LogLevel.WARN)     # WARN and above
+ConsoleSink(min_level="warn")            # strings work too ("warn" or "WARN")
 ```
+
+Level arguments are normalized to `LogLevel` members when the sink is constructed; an unknown level raises `ValueError` immediately rather than misfiltering later.
 
 For the rare case where you want an explicit allow-set instead of a threshold, pass `only` — it is authoritative and ignores `min_level`:
 
@@ -169,6 +175,8 @@ ConsoleSink()                            # color on
 ConsoleSink(use_color=False)             # no ANSI codes
 ConsoleSink(min_level=LogLevel.ERROR)    # errors and fatals only
 ```
+
+Every line is flushed as it is written, so nothing sits in Python's block buffer when stdout is a pipe (Docker, systemd, a process manager); `flush()` flushes both streams.
 
 ### FileSink
 
@@ -202,6 +210,7 @@ BetterstackSink(
     max_retries=3,
     backoff_base=0.5,
     backoff_max=8.0,
+    retry_after_max=60.0,                  # cap on a Retry-After wait
     flush_timeout=5.0,                     # max drain time on close()
 )
 ```
@@ -220,15 +229,17 @@ BetterstackSink(
 BetterstackSink(token="...", ingest_url="...", batch=False)
 ```
 
-**Never raises.** A broken or blocked Betterstack sink can never crash or (except under `BLOCK`) hang your app. Failed deliveries go to `on_error` if provided, otherwise to stderr.
+**Never raises.** A broken or blocked Betterstack sink can never crash or (except under `BLOCK`) hang your app. Failed deliveries go to `on_error` if provided, otherwise to stderr. Out-of-range numeric options (for example `flush_interval=0` or `max_retries=-1`) raise `ValueError` at construction instead of breaking delivery later.
 
 **`on_error`** is called as `on_error(exception, payloads)` where `payloads` is a tuple of the affected log dicts. It runs on the worker thread (or the calling thread for an overflow drop), so keep it fast and make sure it doesn't raise.
 
-**Event time.** Each event is sent with a `dt` (ISO 8601 UTC, derived from the log's `timestamp_ms`) so Betterstack records the time the log *happened* rather than when it was ingested — important once batching or retries delay delivery. A `dt` you set yourself in context is left untouched.
+**Event time.** Each event is sent with a `dt` set to the log's `timestamp_ms` (a Unix-millisecond timestamp, which Betterstack accepts natively) so Betterstack records the time the log *happened* rather than when it was ingested — important once batching or retries delay delivery. A `dt` you set yourself in context is left untouched.
 
-**Rate limits.** On a `429`/`503` carrying a `Retry-After` header (delta-seconds or HTTP-date), the sink waits exactly that long before retrying; otherwise it uses jittered exponential backoff. Retry waits are bounded by the `close()` flush deadline.
+**Rate limits.** On any retryable response (`408`, `429`, `500`, `502`, `503`, `504`) carrying a `Retry-After` header (delta-seconds or HTTP-date), the sink waits that long before retrying, capped at `retry_after_max` (default 60 s); otherwise it uses jittered exponential backoff. Retry waits are bounded by the `close()` flush deadline, and `close()` wakes a backoff that is already in progress so shutdown never waits on it.
 
-**Forcing delivery.** Call `flush(timeout=None)` to block until everything queued so far is delivered, without tearing the sink down — useful at request/job boundaries in a long-running service. It's a no-op in synchronous mode. At the logger level, `get_logger().flush()` (and `await get_async_logger().flush()`) flushes every sink.
+**Forcing delivery.** Call `flush(timeout=None)` to block until everything queued so far is delivered, without tearing the sink down — useful at request/job boundaries in a long-running service. It returns `False` if `timeout` elapses first (including when the queue is full and the flush marker cannot be enqueued in time), and it's a no-op in synchronous mode. At the logger level, `get_logger().flush()` (and `await get_async_logger().flush()`) flushes every sink.
+
+**Shutdown.** `close()` drains for up to `flush_timeout` seconds, then reports every event that is still undelivered — queued, buffered, or mid-retry — to `on_error` as a `TimeoutError`. Nothing is dropped without a callback, and `close()` returns within roughly `flush_timeout` even if the destination is hanging or the queue is full.
 
 ### Custom sinks
 
@@ -273,6 +284,8 @@ configure(context={**get_logger().context, "request_id": rid})
 
 You can also mutate sinks on a handle directly: `add_sink()`, `remove_sink()`, and `set_sinks()`. Removing or replacing a sink **closes** the removed sink by default (so file handles and Betterstack workers don't leak); pass `close_removed=False` / `close=False` to keep it open.
 
+For the same reason, don't share one sink object between two named loggers: reconfiguring either one would close the sink out from under the other. Give each logger its own sink instance, or pass `close_removed=False` when you reconfigure.
+
 ## Exception logging
 
 `log_exception()` records the type, message, and full traceback, and lets you choose the severity (defaults to `ERROR`):
@@ -307,6 +320,8 @@ async with get_async_logger("job") as log:
     await log.log("started", LogLevel.INFO)
 ```
 
+`close()` closes **and detaches** every sink. A closed handle routes nowhere and stays silent — it does not write errors to stderr — until `configure()` installs new sinks, so a registry handle is still safe to use after a `with` block ends.
+
 ## Notes
 
 - **No implicit environment coupling.** multilog does not read `BETTERSTACK_*` (or any) env vars to build sinks — you pass sinks explicitly to `configure()`. Read your own env if you want: `BetterstackSink(token=os.environ["BETTERSTACK_TOKEN"], ...)`.
@@ -337,8 +352,8 @@ See the [examples/](examples/) directory:
 ```bash
 uv sync --group dev
 uv run pytest                 # tests + coverage
-uv run ruff check src/        # lint
-uv run ruff format src/       # format
+uv run ruff check src/ tests/ examples/    # lint
+uv run ruff format src/ tests/ examples/   # format
 uv run ty check src/          # type check
 ```
 

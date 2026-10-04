@@ -121,7 +121,6 @@ class TestSyncRetry:
 
     def test_sleep_backoff_within_bound(self, monkeypatch):
         slept: list[float] = []
-        monkeypatch.setattr("multilog.sinks.betterstack.time.sleep", slept.append)
         monkeypatch.setattr("multilog.sinks.betterstack.random.uniform", lambda _a, b: b)
 
         sink = BetterstackSink(
@@ -132,6 +131,8 @@ class TestSyncRetry:
             backoff_base=0.5,
             backoff_max=8.0,
         )
+        # Before close() the backoff is an interruptible wait on the stop event.
+        monkeypatch.setattr(sink._stop_event, "wait", slept.append)
         for attempt in range(4):
             sink._sleep_backoff(attempt)
 

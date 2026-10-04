@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from typing import Any
 
-from multilog.levels import LogLevel
+from multilog.levels import LogLevel, _coerce_level
 
 
 class BaseSink(ABC):
@@ -14,13 +14,16 @@ class BaseSink(ABC):
     least ``min_level``. The optional ``only`` set is an escape hatch for the
     rare case where you want an explicit allow-list instead of a threshold —
     when ``only`` is provided it is authoritative and ``min_level`` is ignored.
+
+    Levels may be given as ``LogLevel`` members or as their value/name strings
+    (``"warn"`` / ``"WARN"``); they are normalized to members on construction.
     """
 
     def __init__(
         self,
         *,
-        min_level: LogLevel = LogLevel.TRACE,
-        only: Iterable[LogLevel] | None = None,
+        min_level: LogLevel | str = LogLevel.TRACE,
+        only: Iterable[LogLevel | str] | None = None,
     ):
         """Initialize the sink.
 
@@ -29,9 +32,15 @@ class BaseSink(ABC):
                 ``TRACE`` (emit everything).
             only: If given, an explicit set of levels to emit. Overrides
                 ``min_level`` entirely.
+
+        Raises:
+            ValueError: If ``min_level`` or an element of ``only`` is not a
+                log level.
         """
-        self.min_level = min_level
-        self.only: frozenset[LogLevel] | None = frozenset(only) if only is not None else None
+        self.min_level: LogLevel = _coerce_level(min_level)
+        self.only: frozenset[LogLevel] | None = (
+            frozenset(_coerce_level(level) for level in only) if only is not None else None
+        )
 
     def emit(self, payload: dict[str, Any]) -> None:
         """Send a log entry to the destination.

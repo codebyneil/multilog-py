@@ -28,8 +28,8 @@ class ConsoleSink(BaseSink):
         self,
         use_color: bool = True,
         *,
-        min_level: LogLevel = LogLevel.TRACE,
-        only: Iterable[LogLevel] | None = None,
+        min_level: LogLevel | str = LogLevel.TRACE,
+        only: Iterable[LogLevel | str] | None = None,
     ):
         """Initialize console sink.
 
@@ -77,4 +77,12 @@ class ConsoleSink(BaseSink):
         if context:
             formatted += f"  {json.dumps(context, default=str)}"
 
-        print(formatted, file=stream)
+        # Flush per line: when stdout is a pipe (Docker, a process manager) Python
+        # block-buffers it, and a log line must not sit in that buffer.
+        print(formatted, file=stream, flush=True)
+
+    def flush(self, timeout: float | None = None) -> bool:  # noqa: ARG002
+        """Flush stdout and stderr so buffered lines reach the terminal or pipe."""
+        sys.stdout.flush()
+        sys.stderr.flush()
+        return True

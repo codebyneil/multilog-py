@@ -1,6 +1,8 @@
 """Tests for ConsoleSink: stdout/stderr routing, color, format."""
 
+import io
 import re
+import sys
 
 import pytest
 
@@ -79,3 +81,34 @@ class TestFormatting:
         out = capsys.readouterr().out
         # No trailing JSON object after the message.
         assert not out.rstrip().endswith("}")
+
+
+class _CountingStream(io.StringIO):
+    def __init__(self):
+        super().__init__()
+        self.flushes = 0
+
+    def flush(self):
+        self.flushes += 1
+        super().flush()
+
+
+class TestFlushing:
+    def test_each_line_is_flushed_as_written(self, monkeypatch):
+        """stdout is block-buffered when it is a pipe; a log line must not sit in it."""
+        out = _CountingStream()
+        monkeypatch.setattr(sys, "stdout", out)
+
+        ConsoleSink(use_color=False)._emit(_payload("info"))
+
+        assert out.getvalue().endswith("hi\n")
+        assert out.flushes >= 1
+
+    def test_flush_flushes_both_streams_and_returns_true(self, monkeypatch):
+        out, err = _CountingStream(), _CountingStream()
+        monkeypatch.setattr(sys, "stdout", out)
+        monkeypatch.setattr(sys, "stderr", err)
+
+        assert ConsoleSink().flush() is True
+
+        assert (out.flushes, err.flushes) == (1, 1)

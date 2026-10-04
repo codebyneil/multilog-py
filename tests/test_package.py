@@ -10,6 +10,8 @@ import multilog
 def test_version_is_nonempty_string():
     assert isinstance(multilog.__version__, str)
     assert multilog.__version__
+    # The distribution name looked up in __init__ must match pyproject's `name`.
+    assert multilog.__version__ != "0.0.0"
 
 
 def test_public_surface_is_exported():

@@ -12,6 +12,7 @@ from conftest import RecordingSink
 import multilog
 from multilog import (
     AsyncLogger,
+    FileSink,
     Logger,
     LogLevel,
     configure,
@@ -124,3 +125,20 @@ class TestHandleTypes:
 
     def test_get_async_logger_returns_async_logger(self):
         assert isinstance(get_async_logger("r"), AsyncLogger)
+
+
+class TestCloseDetachesSinks:
+    def test_closed_registry_handle_is_silent_until_reconfigured(self, capsys, tmp_path):
+        """A `with get_logger(...)` block closes the shared sinks; later calls on the
+        same stable handle must route nowhere quietly, not raise into stderr."""
+        configure(sinks=[FileSink(tmp_path / "job.jsonl")], name="job")
+        with get_logger("job") as log:
+            log.log("started", LogLevel.INFO)
+
+        get_logger("job").log("after the with-block", LogLevel.INFO)
+        assert capsys.readouterr().err == ""
+
+        sink = RecordingSink()
+        configure(sinks=[sink], name="job")
+        get_logger("job").log("reconfigured", LogLevel.INFO)
+        assert [p["message"] for p in sink.payloads] == ["reconfigured"]

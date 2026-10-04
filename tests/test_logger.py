@@ -226,3 +226,14 @@ class TestCloseAndContextManager:
         assert good.close_calls == 1
         captured = capsys.readouterr()
         assert "BadCloseSink failed to close" in captured.err
+
+    def test_close_detaches_sinks_so_later_logs_are_silent(self, capsys):
+        sink = RecordingSink()
+        logger = Logger(sinks=[sink])
+        logger.close()
+
+        logger.log("after close", LogLevel.INFO)
+
+        assert sink.payloads == []  # a closed sink receives nothing
+        assert logger._state.sinks == ()
+        assert capsys.readouterr().err == ""  # and nothing is written to stderr

@@ -150,7 +150,11 @@ class AsyncLogger:
         await asyncio.to_thread(self._state.flush_all, timeout)
 
     async def close(self) -> None:
-        """Close all sinks on a worker thread. No-op on a bound view."""
+        """Close and detach all sinks on a worker thread. No-op on a bound view.
+
+        Afterwards this logger routes nowhere, quietly, until new sinks are
+        installed.
+        """
         if self._is_bound:
             return
         await asyncio.to_thread(self._state.close_all)

@@ -42,7 +42,9 @@ from multilog.sinks import (
 )
 
 try:
-    __version__ = version("multilog")
+    # The distribution is "multilog-py" (PyPI's "multilog" is an unrelated
+    # project); the import name stays "multilog".
+    __version__ = version("multilog-py")
 except PackageNotFoundError:  # pragma: no cover - exercised in a subprocess (see test_package.py)
     __version__ = "0.0.0"
 

@@ -8,7 +8,9 @@ unbuffered mode that POSTs one event per call — the right choice for a
 short-lived CLI where a background thread would never get to flush.
 
 A sink never raises into the caller: every failure path is routed to
-``on_error`` (or stderr if none is set).
+``on_error`` (or stderr if none is set). Every event accepted by the sink is
+either delivered or reported to ``on_error`` exactly once — including events
+still pending when ``close()``'s drain deadline expires.
 """
 
 from __future__ import annotations
@@ -50,7 +52,7 @@ class _FlushMarker:
         self.event = threading.Event()
 
 
-OnError = Callable[[Exception, "tuple[dict[str, Any], ...]"], None]
+OnError = Callable[[Exception, tuple[dict[str, Any], ...]], None]
 
 
 class OverflowPolicy(StrEnum):
@@ -92,6 +94,7 @@ class BetterstackSink(BaseSink):
         max_retries: int = 3,
         backoff_base: float = 0.5,
         backoff_max: float = 8.0,
+        retry_after_max: float = 60.0,
         flush_timeout: float = 5.0,
         min_level: LogLevel = LogLevel.TRACE,
         only: Iterable[LogLevel] | None = None,
@@ -99,9 +102,11 @@ class BetterstackSink(BaseSink):
         """Initialize the Betterstack sink.
 
         Transient failures (httpx transport/timeout errors, HTTP 408/429, and
-        HTTP 5xx) are retried up to ``max_retries`` times with full-jitter
-        exponential backoff. Other 4xx responses fail fast. On terminal
-        failure the affected events are passed to ``on_error``.
+        HTTP 5xx) are retried up to ``max_retries`` times. A ``Retry-After``
+        header on a retryable response sets the wait (capped at
+        ``retry_after_max``); otherwise full-jitter exponential backoff is
+        used. Other 4xx responses fail fast. On terminal failure the affected
+        events are passed to ``on_error``.
 
         Args:
             token: Betterstack source token.
@@ -109,10 +114,11 @@ class BetterstackSink(BaseSink):
             batch: When True (default), enqueue events and deliver them from a
                 background worker thread in batches. When False, POST each
                 event synchronously on the calling thread.
-            batch_size: Max events per POST in batch mode.
+            batch_size: Max events per POST in batch mode. Must be >= 1.
             flush_interval: Max seconds the worker waits before flushing a
-                partial batch.
-            queue_size: Capacity of the in-memory queue in batch mode.
+                partial batch. Must be > 0.
+            queue_size: Capacity of the in-memory queue in batch mode. Must
+                be >= 1.
             overflow_policy: What to do when the queue is full. See
                 :class:`OverflowPolicy`.
             on_error: Called as ``on_error(exception, payloads)`` when delivery
@@ -124,16 +130,41 @@ class BetterstackSink(BaseSink):
             register_atexit: When True (default) and ``batch`` is True, register
                 an ``atexit`` hook that flushes on interpreter shutdown so
                 events are not silently lost when ``close()`` is never called.
-            timeout: Per-request HTTP timeout in seconds.
+            timeout: Per-request HTTP timeout in seconds. Must be > 0.
             max_retries: Retry attempts after the first failed POST. ``0``
-                disables retries.
+                disables retries. Must be >= 0.
             backoff_base: Base for exponential backoff, in seconds.
             backoff_max: Upper bound on a single backoff sleep, in seconds.
+            retry_after_max: Upper bound, in seconds, on a wait requested by a
+                ``Retry-After`` header, so a misbehaving server cannot stall
+                delivery indefinitely.
             flush_timeout: Total seconds ``close()`` waits to drain pending
                 events before reporting the remainder via ``on_error``.
             min_level: Emit entries at this severity or higher.
             only: Explicit set of levels to emit (overrides ``min_level``).
+
+        Raises:
+            ValueError: If a numeric option is out of its documented range.
         """
+        if batch_size < 1:
+            raise ValueError(f"batch_size must be >= 1, got {batch_size!r}")
+        if flush_interval <= 0:
+            raise ValueError(f"flush_interval must be > 0, got {flush_interval!r}")
+        if queue_size < 1:
+            raise ValueError(f"queue_size must be >= 1, got {queue_size!r}")
+        if max_retries < 0:
+            raise ValueError(f"max_retries must be >= 0, got {max_retries!r}")
+        if timeout <= 0:
+            raise ValueError(f"timeout must be > 0, got {timeout!r}")
+        if backoff_base < 0 or backoff_max < 0:
+            raise ValueError(
+                f"backoff_base and backoff_max must be >= 0, got {backoff_base!r}, {backoff_max!r}"
+            )
+        if retry_after_max < 0:
+            raise ValueError(f"retry_after_max must be >= 0, got {retry_after_max!r}")
+        if flush_timeout < 0:
+            raise ValueError(f"flush_timeout must be >= 0, got {flush_timeout!r}")
+
         super().__init__(min_level=min_level, only=only)
         self.token = token
         self.ingest_url = ingest_url
@@ -141,10 +172,11 @@ class BetterstackSink(BaseSink):
         self.max_retries = max_retries
         self.backoff_base = backoff_base
         self.backoff_max = backoff_max
+        self.retry_after_max = retry_after_max
         self.flush_timeout = flush_timeout
 
         self._batch = batch
-        self._batch_size = max(1, batch_size)
+        self._batch_size = batch_size
         self._flush_interval = flush_interval
         self._queue_size = queue_size
         self._overflow_policy = OverflowPolicy(overflow_policy)
@@ -153,6 +185,9 @@ class BetterstackSink(BaseSink):
         self._client = httpx.Client(timeout=timeout)
         self._closed = False
         self._close_lock = threading.Lock()
+        # Set by close(): wakes a retry backoff that is in progress and tells
+        # the worker to drain what is queued and stop.
+        self._stop_event = threading.Event()
         # Deadline for bounding retry/backoff during shutdown; None otherwise.
         self._deadline: float | None = None
 
@@ -214,11 +249,23 @@ class BetterstackSink(BaseSink):
         stopping = False
         try:
             while True:
+                if self._past_deadline():
+                    # The shutdown drain window is over. Stop consuming so that
+                    # close() reports everything still queued via on_error
+                    # instead of racing this thread for it.
+                    break
+                # Once close() has signalled, drain without blocking: every
+                # event was enqueued before the signal, so an empty queue means
+                # we are done — whether or not the _STOP sentinel reaches us.
+                stopping = stopping or self._stop_event.is_set()
                 batch, stop, flush_marker = self._collect_batch(block=not stopping)
                 if stop:
                     stopping = True
                 if batch:
-                    self._send(batch)
+                    try:
+                        self._send(batch)
+                    except Exception as exc:  # a bug in delivery must not kill the worker
+                        self._handle_error(exc, tuple(batch))
                 if flush_marker is not None:
                     # Everything enqueued before the marker has now shipped.
                     flush_marker.event.set()
@@ -278,18 +325,29 @@ class BetterstackSink(BaseSink):
         """Block until events queued so far are delivered.
 
         Returns ``True`` once the queue has drained (or there was nothing to
-        flush), ``False`` if ``timeout`` elapsed first. A no-op that returns
-        ``True`` in synchronous mode, after ``close()``, or when called from the
-        worker thread (e.g. inside ``on_error``) to avoid self-deadlock.
+        flush), ``False`` if ``timeout`` elapsed first — including when the
+        queue is full and no room for the flush marker appears in time. A
+        no-op that returns ``True`` in synchronous mode, after ``close()``, or
+        when called from the worker thread (e.g. inside ``on_error``) to avoid
+        self-deadlock.
         """
         if not self._batch or self._closed:
             return True
         if self._worker is not None and threading.current_thread() is self._worker:
             return True
         assert self._queue is not None
+        deadline = None if timeout is None else time.monotonic() + timeout
         marker = _FlushMarker()
-        self._queue.put(marker)
-        return marker.event.wait(timeout)
+        try:
+            self._queue.put(marker, timeout=timeout)
+        except queue.Full:
+            return False
+        if self._closed:
+            # close() ran while the marker was being enqueued; its drain may
+            # already have emptied the queue, so nobody else will signal us.
+            return True
+        remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+        return marker.event.wait(remaining)
 
     # -- delivery ---------------------------------------------------------
 
@@ -307,13 +365,18 @@ class BetterstackSink(BaseSink):
         last_exc: Exception | None = None
 
         for attempt in range(self.max_retries + 1):
-            if self._deadline is not None and time.monotonic() >= self._deadline:
+            if self._past_deadline():
                 break
             retry_after: float | None = None
             try:
                 response = self._client.post(self.ingest_url, headers=headers, content=data)
-            except (httpx.TransportError, httpx.TimeoutException) as exc:
+            except httpx.TransportError as exc:  # includes httpx.TimeoutException
                 last_exc = exc
+            except Exception as exc:
+                # Not a transport failure (e.g. the client was closed under us):
+                # a retry cannot fix it, so report and stop.
+                last_exc = exc
+                break
             else:
                 if response.status_code not in _RETRYABLE_STATUS_CODES:
                     try:
@@ -329,12 +392,17 @@ class BetterstackSink(BaseSink):
 
             if attempt < self.max_retries:
                 if retry_after is not None:
-                    self._sleep(retry_after)
+                    self._sleep(min(retry_after, self.retry_after_max))
                 else:
                     self._sleep_backoff(attempt)
 
-        if last_exc is not None:
-            self._handle_error(last_exc, tuple(good))
+        if last_exc is None:
+            # Every attempt was skipped because the shutdown deadline had
+            # already passed; the batch is undelivered and must still be reported.
+            last_exc = TimeoutError(
+                f"shutdown deadline passed before delivery of {len(good)} event(s) was attempted"
+            )
+        self._handle_error(last_exc, tuple(good))
 
     def _serialize(self, payloads: list[dict[str, Any]]) -> tuple[str | None, list[dict[str, Any]]]:
         """Serialize a batch to a JSON array, isolating any unserializable event."""
@@ -366,15 +434,27 @@ class BetterstackSink(BaseSink):
             return payload
         return {**payload, "dt": ts}
 
+    def _past_deadline(self) -> bool:
+        """Whether ``close()`` has started and its drain deadline has passed."""
+        return self._deadline is not None and time.monotonic() >= self._deadline
+
     def _sleep_backoff(self, attempt: int) -> None:
         """Sleep with full-jitter exponential backoff, bounded by the shutdown deadline."""
         ceiling = min(self.backoff_max, self.backoff_base * (2**attempt))
         self._sleep(random.uniform(0, ceiling))
 
     def _sleep(self, delay: float) -> None:
-        """Sleep ``delay`` seconds, clamped to the shutdown deadline when closing."""
-        if self._deadline is not None:
-            delay = min(delay, max(0.0, self._deadline - time.monotonic()))
+        """Wait ``delay`` seconds before a retry.
+
+        Before ``close()`` the wait is interruptible: closing wakes it so the
+        shutdown drain starts at once instead of after a long backoff. During
+        shutdown it is a plain sleep clamped to the remaining drain deadline.
+        """
+        if self._deadline is None:
+            if delay > 0:
+                self._stop_event.wait(delay)
+            return
+        delay = min(delay, max(0.0, self._deadline - time.monotonic()))
         if delay > 0:
             time.sleep(delay)
 
@@ -417,10 +497,12 @@ class BetterstackSink(BaseSink):
     def close(self, *, flush_timeout: float | None = None) -> None:
         """Flush pending events and release resources. Idempotent. Never raises.
 
-        Signals the worker to stop, drains pending events for up to
-        ``flush_timeout`` seconds (falling back to the instance default), then
-        reports any still-undelivered events via ``on_error`` and closes the
-        HTTP client.
+        Signals the worker to stop (waking it from any retry backoff), drains
+        pending events for up to ``flush_timeout`` seconds (falling back to the
+        instance default), then reports any still-undelivered events via
+        ``on_error`` and closes the HTTP client. Returns within roughly
+        ``flush_timeout`` seconds even if the queue is full or the worker is
+        stuck in a request.
         """
         # Calling close() from within on_error (which runs on the worker thread)
         # would self-join and deadlock; the worker stops on its own anyway.
@@ -433,14 +515,20 @@ class BetterstackSink(BaseSink):
             self._closed = True
 
         if not self._batch:
+            self._stop_event.set()  # wake a caller-thread backoff, if one is in progress
             self._client.close()
             return
 
         assert self._queue is not None and self._worker is not None
         timeout = self.flush_timeout if flush_timeout is None else flush_timeout
-        self._deadline = time.monotonic() + timeout
-        self._queue.put(_STOP)
-        self._worker.join(timeout=timeout)
+        deadline = time.monotonic() + timeout
+        self._deadline = deadline
+        self._stop_event.set()
+        with contextlib.suppress(queue.Full):
+            # A queue that stays full means the worker is stuck; it stops at
+            # the deadline regardless, and the drain below reports the backlog.
+            self._queue.put(_STOP, timeout=timeout)
+        self._worker.join(timeout=max(0.0, deadline - time.monotonic()))
         self._report_unflushed()
         self._client.close()
 
